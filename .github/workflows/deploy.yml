@@ -22,7 +22,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - name: Build
         env:
           VITE_DATA_BASE_URL: https://cdn.jsdelivr.net/gh/${{ github.repository }}@data
