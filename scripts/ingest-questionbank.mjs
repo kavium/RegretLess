@@ -5,7 +5,8 @@ import { parseQuestionPage, parseSectionPage, parseSubjectLinksFromHtml, parseSy
 
 const DEFAULT_SEED_URL =
   'https://dynamicrepo.sbs/IB%20QUESTIONBANKS/6.%20Sixth%20Edition%20-%202025%20Sciences/questionbank/en/teachers/pirateIB/questionbanks/'
-const QUESTION_CONCURRENCY = 6
+const QUESTION_CONCURRENCY = 4
+const FETCH_TIMEOUT_MS = 120000
 const OUT_DIR = path.resolve(process.cwd(), 'public/data')
 const SUBJECT_DIR = path.join(OUT_DIR, 'subjects')
 
@@ -38,10 +39,10 @@ function parseArgs(argv) {
   return options
 }
 
-async function fetchHtml(url, retries = 3) {
+async function fetchHtml(url, retries = 5) {
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 15000)
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
     try {
       const response = await fetch(url, {
         headers: {
@@ -65,6 +66,9 @@ async function fetchHtml(url, retries = 3) {
     } finally {
       clearTimeout(timeoutId)
     }
+
+    const backoff = Math.min(30000, 1000 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 500)
+    await new Promise((resolve) => setTimeout(resolve, backoff))
   }
 
   throw new Error(`Failed to fetch ${url}`)
