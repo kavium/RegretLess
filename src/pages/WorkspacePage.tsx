@@ -245,6 +245,7 @@ export function WorkspacePage() {
     setRefreshState('working')
     try {
       await refreshPublishedData(subjectId)
+      updateFilters({ ...filters, scrambleNonce: filters.scrambleNonce + 1 })
     } finally {
       setRefreshState('idle')
     }
@@ -396,7 +397,6 @@ export function WorkspacePage() {
                     className={`ws__icon-btn${qs?.completed ? ' is-active' : ''}`}
                     title="Mark completed"
                     onClick={() => {
-                      const wasCompleted = Boolean(userState[questionId]?.completed)
                       setUserState((cur) => ({
                         ...cur,
                         [questionId]: {
@@ -405,7 +405,7 @@ export function WorkspacePage() {
                           updatedAt: new Date().toISOString(),
                         },
                       }))
-                      if (!wasCompleted && !sessionStorage.getItem(COMPLETED_TIP_KEY)) {
+                      if (!sessionStorage.getItem(COMPLETED_TIP_KEY)) {
                         sessionStorage.setItem(COMPLETED_TIP_KEY, '1')
                         setCompletedTip(true)
                       }
