@@ -1,6 +1,7 @@
 import { CheckCircle2, ChevronDown, ChevronLeft, Flag, RefreshCw, Shuffle, SlidersHorizontal, BookOpen, X } from 'lucide-react'
 import type React from 'react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useWindowVirtualizer } from '@tanstack/react-virtual'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { SafeHtml } from '../components/SafeHtml'
@@ -93,7 +94,7 @@ export function WorkspacePage() {
   const [revealedMs, setRevealedMs] = useState<Record<string, boolean>>({})
   const [details, setDetails] = useState<Record<string, QuestionDetail | 'loading' | 'error'>>({})
   const [refreshState, setRefreshState] = useState<'idle' | 'working'>('idle')
-  const [completedTipFor, setCompletedTipFor] = useState<string | null>(null)
+  const [completedTip, setCompletedTip] = useState<{ id: string; anchor: HTMLElement } | null>(null)
   const restoreAttempted = useRef(false)
 
   useEffect(() => {
@@ -397,7 +398,8 @@ export function WorkspacePage() {
                       type="button"
                       className={`ws__icon-btn${qs?.completed ? ' is-active' : ''}`}
                       title="Mark completed"
-                      onClick={() => {
+                      onClick={(event) => {
+                        const target = event.currentTarget
                         setUserState((cur) => ({
                           ...cur,
                           [questionId]: {
@@ -408,20 +410,12 @@ export function WorkspacePage() {
                         }))
                         if (!sessionStorage.getItem(COMPLETED_TIP_KEY)) {
                           sessionStorage.setItem(COMPLETED_TIP_KEY, '1')
-                          setCompletedTipFor(questionId)
+                          setCompletedTip({ id: questionId, anchor: target })
                         }
                       }}
                     >
                       <CheckCircle2 size={16} />
                     </button>
-                    {completedTipFor === questionId ? (
-                      <div className="ws__bubble" role="status">
-                        <span>Questions selected as completed appear at the bottom of the question list on next scramble or page refresh.</span>
-                        <button type="button" className="ws__bubble-x" aria-label="Dismiss" onClick={() => setCompletedTipFor(null)}>
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ) : null}
                   </div>
                   <button
                     type="button"
@@ -488,6 +482,50 @@ export function WorkspacePage() {
         <span>No regrets. Just marks. · M26</span>
       </footer>
 
+      {completedTip ? <CompletedTipBubble anchor={completedTip.anchor} onDismiss={() => setCompletedTip(null)} /> : null}
+
     </div>
+  )
+}
+
+function CompletedTipBubble({ anchor, onDismiss }: { anchor: HTMLElement; onDismiss: () => void }) {
+  const bubbleRef = useRef<HTMLDivElement | null>(null)
+  const [pos, setPos] = useState<{ top: number; right: number; placement: 'top' | 'bottom' } | null>(null)
+
+  useLayoutEffect(() => {
+    const update = () => {
+      const rect = anchor.getBoundingClientRect()
+      const bubbleH = bubbleRef.current?.offsetHeight ?? 80
+      const gap = 10
+      const spaceBelow = window.innerHeight - rect.bottom
+      const placement: 'top' | 'bottom' = spaceBelow < bubbleH + gap + 16 ? 'top' : 'bottom'
+      const top = placement === 'bottom' ? rect.bottom + gap : rect.top - gap - bubbleH
+      const right = Math.max(8, window.innerWidth - rect.right)
+      setPos({ top, right, placement })
+    }
+    update()
+    const raf = requestAnimationFrame(update)
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [anchor])
+
+  return createPortal(
+    <div
+      ref={bubbleRef}
+      className={`ws__bubble ws__bubble--${pos?.placement ?? 'bottom'}`}
+      role="status"
+      style={pos ? { top: pos.top, right: pos.right } : { top: -9999, right: 0, visibility: 'hidden' }}
+    >
+      <span>Questions selected as completed appear at the bottom of the question list on next scramble or page refresh.</span>
+      <button type="button" className="ws__bubble-x" aria-label="Dismiss" onClick={onDismiss}>
+        <X size={12} />
+      </button>
+    </div>,
+    document.body,
   )
 }
