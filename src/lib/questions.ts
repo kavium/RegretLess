@@ -1,7 +1,7 @@
 import type { NormalizedSelection, OrderMode, PaperCode, QuestionRecord, SubjectBundle, UserQuestionStateMap, WorkspaceFilterState } from '../types'
 import type { SyllabusIndex } from './selection'
 
-const PAPER_ORDER: PaperCode[] = ['1A', '1B', '2']
+const PAPER_ORDER: PaperCode[] = ['1A', '1B', '1', '2', '3']
 const LEVEL_ORDER = ['SL', 'HL'] as const
 
 function createSeed(seedInput: string) {

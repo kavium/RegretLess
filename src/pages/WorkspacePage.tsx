@@ -15,7 +15,7 @@ import { buildWorkspacePath, parseSelection, parseWorkspaceFilters } from '../li
 import type { LevelCode, PaperCode, QuestionDetail, WorkspaceFilterState } from '../types'
 import './WorkspacePage.css'
 
-const PAPER_TINTS: Record<string, 'rose' | 'butter' | 'sky'> = { '1A': 'rose', '1B': 'butter', '2': 'sky' }
+const PAPER_TINTS: Record<string, 'rose' | 'butter' | 'sky'> = { '1A': 'rose', '1B': 'butter', '1': 'rose', '2': 'sky', '3': 'butter' }
 const COMPLETED_TIP_KEY = 'qol-ib-qb:completed-tip-shown'
 
 interface VirtualQuestionListProps {

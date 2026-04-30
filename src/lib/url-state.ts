@@ -25,14 +25,18 @@ export function parseSelection(value: string | null, index: SyllabusIndex): Norm
   )
 }
 
+const PAPER_CODES: readonly PaperCode[] = ['1A', '1B', '1', '2', '3']
+
 function parsePapers(value: string | null): PaperCode[] {
-  const fallback: PaperCode[] = ['1A', '1B', '2']
+  const fallback: PaperCode[] = [...PAPER_CODES]
 
   if (!value) {
     return fallback
   }
 
-  const entries = value.split(',').filter((entry): entry is PaperCode => entry === '1A' || entry === '1B' || entry === '2')
+  const entries = value.split(',').filter((entry): entry is PaperCode =>
+    (PAPER_CODES as readonly string[]).includes(entry),
+  )
   return entries.length ? entries : fallback
 }
 

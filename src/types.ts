@@ -1,4 +1,4 @@
-export type PaperCode = '1A' | '1B' | '2'
+export type PaperCode = '1A' | '1B' | '1' | '2' | '3'
 export type LevelCode = 'SL' | 'HL'
 export type OrderMode = 'source' | 'scrambled'
 export type SyllabusNodeKind = 'umbrella' | 'subunit'

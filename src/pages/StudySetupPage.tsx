@@ -89,7 +89,7 @@ export function StudySetupPage() {
   }
 
   const defaultFilters: WorkspaceFilterState = {
-    paperFilters: ['1A', '1B', '2'],
+    paperFilters: ['1A', '1B', '1', '2', '3'],
     levelFilters: ['SL', 'HL'],
     onlyDifficult: false,
     orderMode: 'source',
