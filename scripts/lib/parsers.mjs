@@ -38,8 +38,12 @@ export function extractInlineImages(html) {
   return { html: next, images }
 }
 
+function normalizeLevel(value) {
+  return value === 'AHL' ? 'HL' : value
+}
+
 export function extractMetadataFromReferenceCode(referenceCode) {
-  const match = referenceCode.match(/\.((?:1A|1B|2))\.(HL|SL)\./)
+  const match = referenceCode.match(/\.((?:1A|1B|2))\.(AHL|HL|SL)\./)
 
   if (!match) {
     return {
@@ -50,7 +54,7 @@ export function extractMetadataFromReferenceCode(referenceCode) {
 
   return {
     paper: match[1],
-    level: match[2],
+    level: normalizeLevel(match[2]),
   }
 }
 
@@ -251,7 +255,7 @@ export function parseQuestionPage(html, pageUrl, subjectId) {
       subjectId,
       title: textContent($('.qc_body').text()).slice(0, 180),
       paper: metadata.Paper || fallback.paper,
-      level: metadata.Level || fallback.level,
+      level: normalizeLevel(metadata.Level || fallback.level),
       questionNumber: metadata['Question number'] || '',
       marksAvailable: metadata['Marks available'] || textContent($('.qn_maximum_mark').text()),
       breadcrumbLabels,
