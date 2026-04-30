@@ -319,11 +319,12 @@ async function main() {
       console.error(`[${subject.id}] FAILED: ${error instanceof Error ? error.message : String(error)}`)
       return
     }
+    const bundleHash = hashJson(bundle)
     const summary = {
       id: subject.id,
       name: subject.name,
-      bundleUrl: `/data/subjects/${subject.id}/index.json`,
-      bundleHash: hashJson(bundle),
+      bundleUrl: `/data/subjects/${subject.id}/index.json?h=${bundleHash.slice(0, 12)}`,
+      bundleHash,
       questionCount: bundle.questions.length,
       nodeCount: bundle.syllabus.length,
     }

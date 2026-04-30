@@ -49,7 +49,7 @@ async function fetchJson<T>(path: string) {
 
 export async function loadPublishedManifest(): Promise<SubjectManifest> {
   try {
-    const manifest = await fetchJson<SubjectManifest>('/data/manifest.json')
+    const manifest = await fetchJson<SubjectManifest>(`/data/manifest.json?t=${Date.now()}`)
     await setCacheItem<CachedManifestRecord>('manifest', { data: manifest })
     return manifest
   } catch (error) {
@@ -145,7 +145,7 @@ export async function refreshPublishedData(
 ) {
   const scrape = await triggerScrape()
 
-  const manifest = await fetchJson<SubjectManifest>('/data/manifest.json')
+  const manifest = await fetchJson<SubjectManifest>(`/data/manifest.json?t=${Date.now()}`)
 
   const changedSubjectIds = manifest.subjects
     .filter((subject) => {
