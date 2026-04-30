@@ -88,7 +88,8 @@ export function parseSubjectLinksFromHtml(html, pageUrl) {
       return
     }
 
-    const folderMatch = resolved.match(/\/questionbanks\/(\d+-[A-Za-z0-9-]+)\/?$/)
+    const cleanResolved = resolved.split(/[?#]/)[0]
+    const folderMatch = cleanResolved.match(/\/questionbanks\/(\d+-[A-Za-z0-9-]+)\/?$/)
     if (!folderMatch) return
 
     const id = folderMatch[1]
