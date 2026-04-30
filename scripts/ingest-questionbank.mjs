@@ -274,6 +274,9 @@ async function main() {
   } else {
     const seedHtml = await fetchHtml(options.seedUrl)
     subjects = parseSubjectLinksFromHtml(seedHtml, options.seedUrl)
+    if (subjects.length === 0) {
+      console.warn(`Seed HTML returned 0 subjects. len=${seedHtml.length}. First 800 chars:\n${seedHtml.slice(0, 800)}`)
+    }
   }
 
   if (options.subjects) {
