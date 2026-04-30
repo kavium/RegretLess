@@ -5,7 +5,7 @@ import { Agent, setGlobalDispatcher } from 'undici'
 import { normalizeLevel, parseQuestionPage, parseSectionPage, parseSubjectLinksFromHtml, parseSyllabusPage } from './lib/parsers.mjs'
 
 const DEFAULT_SEED_URL =
-  'https://dynamicrepo.sbs/IB%20QUESTIONBANKS/6.%20Sixth%20Edition%20-%202025%20Sciences/questionbank/en/teachers/pirateIB/questionbanks/'
+  'https://dynamicrepo.sbs/IB%20QUESTIONBANKS/6.%20Sixth%20Edition%20-%202025%20Sciences/questionbank/en/teachers/pirateIB/questionbanks/?noscript'
 const SUBJECT_CONCURRENCY = 3
 const SECTION_CONCURRENCY = 3
 const QUESTION_CONCURRENCY = 6
