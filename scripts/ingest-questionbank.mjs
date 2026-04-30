@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Agent, setGlobalDispatcher } from 'undici'
-import { parseQuestionPage, parseSectionPage, parseSubjectLinksFromHtml, parseSyllabusPage } from './lib/parsers.mjs'
+import { normalizeLevel, parseQuestionPage, parseSectionPage, parseSubjectLinksFromHtml, parseSyllabusPage } from './lib/parsers.mjs'
 
 const DEFAULT_SEED_URL =
   'https://dynamicrepo.sbs/IB%20QUESTIONBANKS/6.%20Sixth%20Edition%20-%202025%20Sciences/questionbank/en/teachers/pirateIB/questionbanks/'
@@ -139,7 +139,7 @@ async function ingestSubject(subject, options) {
   const metaMap = new Map(
     (existingIndex?.questions ?? []).map((question) => [
       question.questionId,
-      { ...question, memberSectionIds: [], sectionOrders: {} },
+      { ...question, level: normalizeLevel(question.level), memberSectionIds: [], sectionOrders: {} },
     ]),
   )
   const sectionQuestionOrder = {}
@@ -197,7 +197,7 @@ async function ingestSubject(subject, options) {
         try {
           const cached = JSON.parse(await readFile(detailPath, 'utf8'))
           if (cached?.meta) {
-            metaMap.set(entry.questionId, { ...cached.meta, memberSectionIds: [], sectionOrders: {} })
+            metaMap.set(entry.questionId, { ...cached.meta, level: normalizeLevel(cached.meta.level), memberSectionIds: [], sectionOrders: {} })
             continue
           }
         } catch {}

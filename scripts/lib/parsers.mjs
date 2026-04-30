@@ -38,7 +38,7 @@ export function extractInlineImages(html) {
   return { html: next, images }
 }
 
-function normalizeLevel(value) {
+export function normalizeLevel(value) {
   return value === 'AHL' ? 'HL' : value
 }
 
