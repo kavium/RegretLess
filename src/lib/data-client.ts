@@ -1,6 +1,24 @@
 import { getCacheItem, setCacheItem } from './cache'
 import type { QuestionDetail, SubjectBundle, SubjectManifest } from '../types'
 
+function normalizeLevel(value: string): 'SL' | 'HL' {
+  const upper = (value ?? '').toUpperCase()
+  return upper === 'AHL' ? 'HL' : (upper as 'SL' | 'HL')
+}
+
+function normalizeBundle(bundle: SubjectBundle): SubjectBundle {
+  let mutated = false
+  const questions = bundle.questions.map((q) => {
+    const level = normalizeLevel(q.level as string)
+    if (level !== q.level) {
+      mutated = true
+      return { ...q, level }
+    }
+    return q
+  })
+  return mutated ? { ...bundle, questions } : bundle
+}
+
 interface CachedManifestRecord {
   data: SubjectManifest
 }
@@ -77,10 +95,11 @@ export async function loadPublishedSubjectBundle(
   const cached = await getCacheItem<CachedBundleRecord>(cacheKey)
 
   if (cached?.hash === subject.bundleHash) {
-    return cached.data
+    return normalizeBundle(cached.data)
   }
 
-  const bundle = await fetchJson<SubjectBundle>(subject.bundleUrl)
+  const raw = await fetchJson<SubjectBundle>(subject.bundleUrl)
+  const bundle = normalizeBundle(raw)
   await setCacheItem<CachedBundleRecord>(cacheKey, {
     hash: subject.bundleHash,
     data: bundle,

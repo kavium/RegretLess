@@ -39,11 +39,12 @@ export function extractInlineImages(html) {
 }
 
 export function normalizeLevel(value) {
-  return value === 'AHL' ? 'HL' : value
+  const upper = (value ?? '').toUpperCase()
+  return upper === 'AHL' ? 'HL' : upper
 }
 
 export function extractMetadataFromReferenceCode(referenceCode) {
-  const match = referenceCode.match(/\.((?:1A|1B|2))\.(AHL|HL|SL)\./)
+  const match = referenceCode.match(/\.((?:1A|1B|1|2|3))\.(AHL|HL|SL|hl|sl|ahl)\./i)
 
   if (!match) {
     return {
