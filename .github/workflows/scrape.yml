@@ -28,31 +28,35 @@ jobs:
       - name: Install deps
         run: npm install --no-audit --no-fund
 
-      - name: Restore previous data branch
+      - name: Clone data branch as worktree
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p public/data
-          if git ls-remote --heads origin data | grep -q data; then
-            git fetch origin data --depth=1
-            git --work-tree=public/data checkout origin/data -- .
+          set -euo pipefail
+          rm -rf public/data
+          if git ls-remote --heads "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" data | grep -q data; then
+            git clone --depth 50 --branch data \
+              "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" public/data
+          else
+            mkdir -p public/data
+            cd public/data
+            git init -q -b data
+            git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           fi
 
       - name: Run scraper
         run: node --max-old-space-size=8192 scripts/ingest-questionbank.mjs
 
       - name: Publish to data branch
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           cd public/data
-          git init -q
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b data
           git add -A
           if git diff --cached --quiet; then
             echo "no changes"
             exit 0
           fi
           git commit -q -m "scrape $(date -u +%FT%TZ)"
-          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push -f origin data
+          git push origin HEAD:data

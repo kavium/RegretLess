@@ -9,7 +9,7 @@ interface DataContextValue {
   status: 'idle' | 'loading' | 'ready' | 'error'
   error: string | null
   loadSubjectBundle: (subjectId: string) => Promise<SubjectBundle>
-  refreshPublishedData: (subjectId?: string) => Promise<{ changedSubjectIds: string[]; scraped: boolean }>
+  refreshPublishedData: () => Promise<{ changedSubjectIds: string[]; scraped: boolean }>
 }
 
 const DataContext = createContext<DataContextValue | null>(null)
@@ -72,8 +72,8 @@ export function DataProvider({ children }: PropsWithChildren) {
   )
 
   const refreshPublishedData = useCallback(
-    async (subjectId?: string) => {
-      const result = await refreshData(manifest, subjectId)
+    async () => {
+      const result = await refreshData(manifest)
       setManifest(result.manifest)
       setStatus('ready')
       setError(null)

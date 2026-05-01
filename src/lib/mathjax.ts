@@ -29,6 +29,8 @@ export function ensureMathJax() {
     const script = document.createElement('script')
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.0.0/startup.min.js'
     script.async = true
+    script.crossOrigin = 'anonymous'
+    script.integrity = 'sha384-onusZe+xjPdfrdrEOOcBMVfoPckiYOimqTl8PEAc+amSKhjfhLLL1M8cZGM944Tf'
     script.dataset.mathjax = 'qol-ib-qb'
     script.addEventListener('load', () => resolve(), { once: true })
     script.addEventListener('error', () => reject(new Error('MathJax failed to load')), { once: true })

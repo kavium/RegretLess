@@ -1,16 +1,21 @@
-import { openDB } from 'idb'
+import { openDB, type IDBPDatabase } from 'idb'
 
 const DB_NAME = 'qol-ib-qb'
 const STORE_NAME = 'kv'
 
-async function getDb() {
-  return openDB(DB_NAME, 1, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME)
-      }
-    },
-  })
+let dbPromise: Promise<IDBPDatabase> | null = null
+
+function getDb() {
+  if (!dbPromise) {
+    dbPromise = openDB(DB_NAME, 1, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME)
+        }
+      },
+    })
+  }
+  return dbPromise
 }
 
 export async function getCacheItem<T>(key: string): Promise<T | undefined> {

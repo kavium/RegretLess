@@ -72,11 +72,12 @@ export function applyQuestionFilters(
   questionIds: string[],
   filters: WorkspaceFilterState,
   userState: UserQuestionStateMap,
+  questionMap?: Map<string, QuestionRecord>,
 ) {
-  const questionMap = createQuestionMap(bundle)
+  const map = questionMap ?? createQuestionMap(bundle)
 
   return questionIds.filter((questionId) => {
-    const question = questionMap.get(questionId)
+    const question = map.get(questionId)
 
     if (!question) {
       return false

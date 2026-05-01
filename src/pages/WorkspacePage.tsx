@@ -1,6 +1,6 @@
 import { CheckCircle2, ChevronDown, ChevronLeft, Flag, RefreshCw, Shuffle, SlidersHorizontal, BookOpen, X } from 'lucide-react'
 import type React from 'react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useWindowVirtualizer } from '@tanstack/react-virtual'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -90,27 +90,40 @@ export function WorkspacePage() {
   const { refreshPublishedData } = useDataContext()
   const { bundle, status, error } = useSubjectBundle(subjectId)
   const [searchParams] = useSearchParams()
+  // KeyedWorkspace in App.tsx remounts this component on subjectId change, so all
+  // per-subject state initialises fresh from storage; no in-render reset needed.
   const [userState, setUserState] = useState(() => (subjectId ? getUserQuestionState(subjectId) : {}))
   const [revealedMs, setRevealedMs] = useState<Record<string, boolean>>({})
   const [details, setDetails] = useState<Record<string, QuestionDetail | 'loading' | 'error'>>({})
   const [refreshState, setRefreshState] = useState<'idle' | 'working'>('idle')
   const [completedTip, setCompletedTip] = useState<{ id: string; anchor: HTMLElement } | null>(null)
   const restoreAttempted = useRef(false)
-
-  useEffect(() => {
-    if (!subjectId) return
-    setUserState(getUserQuestionState(subjectId))
-  }, [subjectId])
+  const detailAttemptsRef = useRef<Map<string, 'pending' | 'done' | 'failed'>>(new Map())
+  const [retryTick, setRetryTick] = useState(0)
 
   const expandedId = useMemo(() => parseWorkspaceFilters(searchParams).expandedQuestionId, [searchParams])
+
   useEffect(() => {
     if (!subjectId || !expandedId) return
-    if (details[expandedId] && details[expandedId] !== 'error') return
+    const status = detailAttemptsRef.current.get(expandedId)
+    if (status === 'pending' || status === 'done') return
+    detailAttemptsRef.current.set(expandedId, 'pending')
     setDetails((cur) => ({ ...cur, [expandedId]: 'loading' }))
     loadQuestionDetail(subjectId, expandedId)
-      .then((detail) => setDetails((cur) => ({ ...cur, [expandedId]: detail })))
-      .catch(() => setDetails((cur) => ({ ...cur, [expandedId]: 'error' })))
-  }, [subjectId, expandedId, details])
+      .then((detail) => {
+        detailAttemptsRef.current.set(expandedId, 'done')
+        setDetails((cur) => ({ ...cur, [expandedId]: detail }))
+      })
+      .catch(() => {
+        detailAttemptsRef.current.set(expandedId, 'failed')
+        setDetails((cur) => ({ ...cur, [expandedId]: 'error' }))
+      })
+  }, [subjectId, expandedId, retryTick])
+
+  const retryDetail = useCallback((id: string) => {
+    detailAttemptsRef.current.delete(id)
+    setRetryTick((n) => n + 1)
+  }, [])
 
   const syllabusIndex = useMemo(() => (bundle ? buildSyllabusIndex(bundle.syllabus) : null), [bundle])
   const selection = useMemo(
@@ -125,7 +138,6 @@ export function WorkspacePage() {
     return buildCanonicalQuestionSequence(bundle, selection, syllabusIndex)
   }, [bundle, selection, syllabusIndex])
 
-  const completedSnapshotRef = useRef<Set<string>>(new Set())
   const orderKey = useMemo(
     () =>
       [
@@ -139,24 +151,28 @@ export function WorkspacePage() {
       ].join('|'),
     [subjectId, searchParams, filters.paperFilters, filters.levelFilters, filters.onlyDifficult, filters.orderMode, filters.scrambleNonce],
   )
-  const orderKeyRef = useRef<string>('')
-  if (orderKeyRef.current !== orderKey) {
-    completedSnapshotRef.current = new Set(
-      Object.keys(userState).filter((id) => userState[id]?.completed),
-    )
-    orderKeyRef.current = orderKey
+
+  // completedSnapshot is captured at the moment orderKey changes (so questions newly marked
+  // completed mid-session don't reshuffle to the bottom). React-recommended: update via
+  // setState-during-render guard, not refs-during-render.
+  const [completedSnapshot, setCompletedSnapshot] = useState<Set<string>>(() => new Set())
+  const [snapshotKey, setSnapshotKey] = useState<string | null>(null)
+  if (snapshotKey !== orderKey) {
+    setSnapshotKey(orderKey)
+    setCompletedSnapshot(new Set(Object.keys(userState).filter((id) => userState[id]?.completed)))
+    setRevealedMs({})
   }
 
   const visibleQuestionIds = useMemo(() => {
     if (!bundle) return []
     return orderQuestionIds(
-      applyQuestionFilters(bundle, canonicalQuestionIds, filters, userState),
+      applyQuestionFilters(bundle, canonicalQuestionIds, filters, userState, questionMap),
       bundle,
-      completedSnapshotRef.current,
+      completedSnapshot,
       filters.orderMode,
       filters.scrambleNonce,
     )
-  }, [bundle, canonicalQuestionIds, filters, userState, orderKey])
+  }, [bundle, canonicalQuestionIds, filters, userState, questionMap, completedSnapshot])
 
   const availablePapers = useMemo(() => (bundle ? getAvailablePapers(bundle) : []), [bundle])
   const availableLevels = useMemo(() => (bundle ? getAvailableLevels(bundle) : []), [bundle])
@@ -245,7 +261,7 @@ export function WorkspacePage() {
   async function handleRefresh() {
     setRefreshState('working')
     try {
-      await refreshPublishedData(subjectId)
+      await refreshPublishedData()
       updateFilters({ ...filters, scrambleNonce: filters.scrambleNonce + 1 })
     } finally {
       setRefreshState('idle')
@@ -453,7 +469,14 @@ export function WorkspacePage() {
                       return <div className="ws__q-question">— loading question —</div>
                     }
                     if (detail === 'error') {
-                      return <div className="ws__q-question">— failed to load question —</div>
+                      return (
+                        <div className="ws__q-question">
+                          — failed to load question —{' '}
+                          <button type="button" className="ws__q-retry" onClick={() => retryDetail(questionId)}>
+                            retry
+                          </button>
+                        </div>
+                      )
                     }
                     return (
                       <>

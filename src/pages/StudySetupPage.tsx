@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowRight, ChevronLeft, Layers2, RotateCcw, X } from 'lucide-react'
 import { useSubjectBundle } from '../lib/use-subject-bundle'
@@ -18,7 +18,7 @@ import './StudySetupPage.css'
 
 const TINTS = ['rose', 'butter', 'sage', 'sky'] as const
 
-function PqNode({
+const PqNode = memo(function PqNode({
   node, index, selection, onToggle, depth = 0,
 }: {
   node: SyllabusNode
@@ -55,21 +55,39 @@ function PqNode({
       ) : null}
     </div>
   )
-}
+})
 
 export function StudySetupPage() {
   const navigate = useNavigate()
   const { subjectId } = useParams()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { bundle, status, error } = useSubjectBundle(subjectId)
 
   const syllabusIndex = useMemo(() => (bundle ? buildSyllabusIndex(bundle.syllabus) : null), [bundle])
-  const [selection, setSelection] = useState<NormalizedSelection>(emptySelection())
 
-  useEffect(() => {
-    if (!bundle || !syllabusIndex) return
-    setSelection(parseSelection(searchParams.get('units'), syllabusIndex))
-  }, [bundle, searchParams, syllabusIndex])
+  const selection = useMemo(
+    () => (syllabusIndex ? parseSelection(searchParams.get('units'), syllabusIndex) : emptySelection()),
+    [searchParams, syllabusIndex],
+  )
+
+  const writeSelection = useCallback(
+    (next: NormalizedSelection) => {
+      const params = new URLSearchParams(searchParams)
+      const units = serializeSelection(next)
+      if (units) params.set('units', units)
+      else params.delete('units')
+      setSearchParams(params, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
+
+  const handleToggle = useCallback(
+    (id: string) => {
+      if (!syllabusIndex) return
+      writeSelection(toggleSelectionNode(selection, syllabusIndex, id))
+    },
+    [selection, syllabusIndex, writeSelection],
+  )
 
   const questionCount = useMemo(() => {
     if (!bundle || !syllabusIndex) return 0
@@ -142,7 +160,7 @@ export function StudySetupPage() {
                       type="button"
                       className="setup__chip-x"
                       aria-label={`Remove ${entry.label}`}
-                      onClick={() => setSelection((cur) => toggleSelectionNode(cur, syllabusIndex, entry.id))}
+                      onClick={() => handleToggle(entry.id)}
                     >
                       <X size={12} />
                     </button>
@@ -173,10 +191,10 @@ export function StudySetupPage() {
               <h2>Choose any combination</h2>
             </div>
             <div className="setup__main-actions">
-              <button type="button" className="setup__action setup__action--primary" onClick={() => setSelection(selectAllUnits(syllabusIndex))}>
+              <button type="button" className="setup__action setup__action--primary" onClick={() => writeSelection(selectAllUnits(syllabusIndex))}>
                 <Layers2 size={14} /> select all
               </button>
-              <button type="button" className="setup__action" onClick={() => setSelection(emptySelection())}>
+              <button type="button" className="setup__action" onClick={() => writeSelection(emptySelection())}>
                 <RotateCcw size={14} /> clear
               </button>
             </div>
@@ -190,7 +208,7 @@ export function StudySetupPage() {
                   <div className="setup__vol-band">
                     <span className="setup__vol-no">Unit {String(i + 1).padStart(2, '0')}</span>
                   </div>
-                  <PqNode node={node} index={syllabusIndex} selection={selection} onToggle={(id) => setSelection((cur) => toggleSelectionNode(cur, syllabusIndex, id))} />
+                  <PqNode node={node} index={syllabusIndex} selection={selection} onToggle={handleToggle} />
                 </div>
               )
             })}

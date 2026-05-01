@@ -10,6 +10,7 @@ export interface SubjectManifestEntry {
   bundleHash: string
   questionCount: number
   nodeCount: number
+  paperCoverage?: PaperCode[]
 }
 
 export interface SubjectManifest {

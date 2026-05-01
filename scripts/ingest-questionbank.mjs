@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Agent, setGlobalDispatcher } from 'undici'
 import { normalizeLevel, parseQuestionPage, parseSectionPage, parseSubjectLinksFromHtml, parseSyllabusPage } from './lib/parsers.mjs'
@@ -10,6 +10,9 @@ const SUBJECT_CONCURRENCY = 3
 const SECTION_CONCURRENCY = 3
 const QUESTION_CONCURRENCY = 6
 const FETCH_TIMEOUT_MS = 120000
+const HASHED_BUNDLES_TO_KEEP = 2
+// Bump when parseQuestionPage output shape changes so cached q/<id>.json files are re-fetched.
+const QUESTION_SCHEMA_VERSION = 2
 
 setGlobalDispatcher(
   new Agent({
@@ -95,6 +98,12 @@ async function readJson(filePath) {
   }
 }
 
+async function writeJsonAtomic(target, value, { pretty = false } = {}) {
+  const tmp = `${target}.tmp-${process.pid}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
+  await writeFile(tmp, pretty ? JSON.stringify(value, null, 2) : JSON.stringify(value))
+  await rename(tmp, target)
+}
+
 function hashJson(value) {
   return createHash('sha1').update(JSON.stringify(value)).digest('hex')
 }
@@ -124,6 +133,56 @@ async function fileExists(filePath) {
   }
 }
 
+function paperCoverageFor(questions) {
+  const seen = new Set()
+  for (const q of questions) {
+    if (q?.paper) seen.add(q.paper)
+  }
+  const order = ['1A', '1B', '1', '2', '3']
+  return order.filter((p) => seen.has(p))
+}
+
+function validateBundleIntegrity(bundle) {
+  const questionIds = new Set(bundle.questions.map((q) => q.questionId))
+  const syllabusIds = new Set(bundle.syllabus.map((node) => node.id))
+  for (const [sectionId, ids] of Object.entries(bundle.sectionQuestionOrder)) {
+    if (!syllabusIds.has(sectionId)) {
+      throw new Error(`integrity: sectionQuestionOrder references unknown section ${sectionId}`)
+    }
+    for (const qid of ids) {
+      if (!questionIds.has(qid)) {
+        throw new Error(`integrity: section ${sectionId} references missing question ${qid}`)
+      }
+    }
+  }
+  for (const q of bundle.questions) {
+    for (const sectionId of q.memberSectionIds ?? []) {
+      if (!syllabusIds.has(sectionId)) {
+        throw new Error(`integrity: question ${q.questionId} memberSection ${sectionId} not in syllabus`)
+      }
+    }
+  }
+}
+
+async function pruneOldHashedBundles(subjectDir, keepHash) {
+  let entries
+  try {
+    entries = await readdir(subjectDir)
+  } catch {
+    return
+  }
+  const hashedFiles = entries
+    .filter((name) => /^index-[0-9a-f]+\.json$/.test(name))
+    .filter((name) => !name.includes(keepHash))
+  for (const name of hashedFiles.slice(0, Math.max(0, hashedFiles.length - HASHED_BUNDLES_TO_KEEP))) {
+    try {
+      await unlink(path.join(subjectDir, name))
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+
 async function ingestSubject(subject, options) {
   const subjectDir = path.join(SUBJECT_DIR, subject.id)
   const questionsDir = path.join(subjectDir, 'q')
@@ -142,9 +201,13 @@ async function ingestSubject(subject, options) {
       { ...question, level: normalizeLevel(question.level), memberSectionIds: [], sectionOrders: {} },
     ]),
   )
+  const cachedQuestionSectionOrders = new Map(
+    (existingIndex?.questions ?? []).map((q) => [q.questionId, q.sectionOrders ?? {}]),
+  )
   const sectionQuestionOrder = {}
   const sectionOrderIndex = Object.fromEntries(syllabus.map((node) => [node.id, node.canonicalOrder]))
   let addedQuestionCount = 0
+  let sectionFetchFailures = 0
 
   console.log(`[${subject.id}] ${syllabus.length} sections, ${metaMap.size} cached questions`)
 
@@ -156,18 +219,41 @@ async function ingestSubject(subject, options) {
     const snapshotQuestions = [...metaMap.values()].sort((left, right) =>
       left.referenceCode.localeCompare(right.referenceCode),
     )
-    await writeFile(
-      indexPath,
-      JSON.stringify({
-        subject: { id: subject.id, name: subject.name },
-        syllabus,
-        sectionQuestionOrder,
-        questions: snapshotQuestions,
-      }),
-    )
+    await writeJsonAtomic(indexPath, {
+      subject: { id: subject.id, name: subject.name },
+      syllabus,
+      sectionQuestionOrder,
+      questions: snapshotQuestions,
+    })
   }
 
   const cachedSectionOrder = existingIndex?.sectionQuestionOrder ?? {}
+
+  const restoreSectionFromCache = (section) => {
+    const cached = cachedSectionOrder[section.id]
+    if (!Array.isArray(cached) || cached.length === 0) {
+      sectionQuestionOrder[section.id] = []
+      return false
+    }
+    const present = []
+    for (const qid of cached) {
+      const meta = metaMap.get(qid)
+      if (!meta) continue
+      present.push(qid)
+      meta.memberSectionIds = dedupeByCanonicalOrder(
+        [...meta.memberSectionIds, section.id],
+        sectionOrderIndex,
+      )
+      const previousOrders = cachedQuestionSectionOrders.get(qid) ?? {}
+      const order = previousOrders[section.id]
+      meta.sectionOrders = {
+        ...meta.sectionOrders,
+        [section.id]: typeof order === 'number' ? order : present.length - 1,
+      }
+    }
+    sectionQuestionOrder[section.id] = present
+    return true
+  }
 
   await runWithConcurrency(syllabus, SECTION_CONCURRENCY, async (section) => {
     const sectionUrl = new URL(`syllabus_sections/${section.id}.html`, syllabusUrl).toString()
@@ -188,8 +274,13 @@ async function ingestSubject(subject, options) {
       try {
         sectionHtml = await fetchHtml(sectionUrl)
       } catch (error) {
-        console.warn(`Skipping section ${section.id}: ${error instanceof Error ? error.message : String(error)}`)
-        sectionQuestionOrder[section.id] = []
+        sectionFetchFailures += 1
+        const restored = restoreSectionFromCache(section)
+        const note = restored ? `restored ${sectionQuestionOrder[section.id].length} cached qs` : 'no cache available'
+        console.warn(
+          `[${subject.id}] section ${section.id} fetch failed (${note}): ${error instanceof Error ? error.message : String(error)}`,
+        )
+        sectionsDone += 1
         return
       }
       sectionQuestions = parseSectionPage(sectionHtml, sectionUrl)
@@ -206,16 +297,18 @@ async function ingestSubject(subject, options) {
       const detailPath = path.join(questionsDir, `${entry.questionId}.json`)
       const hasMeta = metaMap.has(entry.questionId)
       const hasDetail = await fileExists(detailPath)
-      if (hasMeta && hasDetail) continue
-      if (hasDetail && !hasMeta) {
+      let cachedSchemaVersion = null
+      if (hasDetail) {
         try {
           const cached = JSON.parse(await readFile(detailPath, 'utf8'))
-          if (cached?.meta) {
+          cachedSchemaVersion = cached?.schemaVersion ?? null
+          if (!hasMeta && cached?.meta && cachedSchemaVersion === QUESTION_SCHEMA_VERSION) {
             metaMap.set(entry.questionId, { ...cached.meta, level: normalizeLevel(cached.meta.level), memberSectionIds: [], sectionOrders: {} })
-            continue
           }
         } catch {}
       }
+      const cacheFresh = hasDetail && cachedSchemaVersion === QUESTION_SCHEMA_VERSION
+      if (cacheFresh && metaMap.has(entry.questionId)) continue
       if (toFetch.length >= options.maxQuestionsPerSubject) break
       toFetch.push(entry)
     }
@@ -230,7 +323,7 @@ async function ingestSubject(subject, options) {
             await writeFile(imagePath, Buffer.from(image.base64, 'base64'))
           }
         }
-        await writeFile(path.join(questionsDir, `${entry.questionId}.json`), JSON.stringify({ ...detail, meta }))
+        await writeJsonAtomic(path.join(questionsDir, `${entry.questionId}.json`), { ...detail, meta, schemaVersion: QUESTION_SCHEMA_VERSION })
         metaMap.set(entry.questionId, meta)
         addedQuestionCount += 1
       } catch (error) {
@@ -269,11 +362,20 @@ async function ingestSubject(subject, options) {
     questions,
   }
 
-  await writeFile(indexPath, JSON.stringify(index))
+  validateBundleIntegrity(index)
+  await writeJsonAtomic(indexPath, index)
 
-  console.log(`[${subject.id}] done: ${questions.length} total, +${addedQuestionCount} new`)
+  console.log(
+    `[${subject.id}] done: ${questions.length} total, +${addedQuestionCount} new, ${sectionFetchFailures} section fetch failures`,
+  )
 
-  return index
+  return { index, sectionFetchFailures }
+}
+
+let manifestWriteChain = Promise.resolve()
+function serialiseManifestWrite(fn) {
+  manifestWriteChain = manifestWriteChain.then(fn, fn)
+  return manifestWriteChain
 }
 
 async function main() {
@@ -302,31 +404,50 @@ async function main() {
   const existingManifest = await readJson(path.join(OUT_DIR, 'manifest.json'))
   const manifestSubjects = existingManifest?.subjects ? [...existingManifest.subjects] : []
 
-  const writeManifest = async () => {
-    const manifest = {
-      version: new Date().toISOString(),
-      generatedAt: new Date().toISOString(),
-      subjects: manifestSubjects,
-    }
-    await writeFile(path.join(OUT_DIR, 'manifest.json'), JSON.stringify(manifest, null, 2))
-  }
+  const writeManifest = () =>
+    serialiseManifestWrite(async () => {
+      const manifest = {
+        version: new Date().toISOString(),
+        generatedAt: new Date().toISOString(),
+        subjects: manifestSubjects,
+      }
+      await writeJsonAtomic(path.join(OUT_DIR, 'manifest.json'), manifest, { pretty: true })
+    })
 
   await runWithConcurrency(subjects, SUBJECT_CONCURRENCY, async (subject) => {
-    let bundle
+    let result
     try {
-      bundle = await ingestSubject(subject, options)
+      result = await ingestSubject(subject, options)
     } catch (error) {
       console.error(`[${subject.id}] FAILED: ${error instanceof Error ? error.message : String(error)}`)
       return
     }
-    const bundleHash = hashJson(bundle)
+    const { index, sectionFetchFailures } = result
+    const bundleHash = hashJson(index)
+    const subjectDir = path.join(SUBJECT_DIR, subject.id)
+    const hashedFilename = `index-${bundleHash}.json`
+    const hashedPath = path.join(subjectDir, hashedFilename)
+    if (!(await fileExists(hashedPath))) {
+      await writeJsonAtomic(hashedPath, index)
+    }
+    await pruneOldHashedBundles(subjectDir, bundleHash)
+
+    const previous = manifestSubjects.find((entry) => entry.id === subject.id)
+    if (sectionFetchFailures > 0 && previous && previous.bundleHash !== bundleHash) {
+      console.warn(
+        `[${subject.id}] keeping previous manifest entry (sectionFetchFailures=${sectionFetchFailures}); new hash=${bundleHash.slice(0, 8)} previous=${previous.bundleHash.slice(0, 8)}`,
+      )
+      return
+    }
+
     const summary = {
       id: subject.id,
       name: subject.name,
-      bundleUrl: `/data/subjects/${subject.id}/index.json?h=${bundleHash.slice(0, 12)}`,
+      bundleUrl: `/data/subjects/${subject.id}/${hashedFilename}`,
       bundleHash,
-      questionCount: bundle.questions.length,
-      nodeCount: bundle.syllabus.length,
+      questionCount: index.questions.length,
+      nodeCount: index.syllabus.length,
+      paperCoverage: paperCoverageFor(index.questions),
     }
     const existingIdx = manifestSubjects.findIndex((entry) => entry.id === subject.id)
     if (existingIdx >= 0) manifestSubjects[existingIdx] = summary

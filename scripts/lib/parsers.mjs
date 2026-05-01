@@ -47,6 +47,9 @@ export function extractMetadataFromReferenceCode(referenceCode) {
   const match = referenceCode.match(/\.((?:1A|1B|1|2|3))\.(AHL|HL|SL|hl|sl|ahl)\./i)
 
   if (!match) {
+    if (referenceCode) {
+      console.warn(`[parsers] paper/level regex miss on referenceCode="${referenceCode}", falling back to paper=2 level=HL`)
+    }
     return {
       paper: '2',
       level: 'HL',
@@ -241,7 +244,17 @@ export function parseQuestionPage(html, pageUrl, subjectId) {
   })
 
   const questionId = pageUrl.split('/').pop().replace(/\.html$/, '')
-  const rawQuestionHtml = $('.qc_body').first().html()?.trim() ?? ''
+  const parentStems = []
+  $('.t_qnt_container_full .q_resource').each((_, el) => {
+    const stemHtml = $(el).html()?.trim()
+    if (stemHtml) {
+      parentStems.push(`<div class="qb-parent-stem">${stemHtml}</div>`)
+    }
+  })
+  const leafBodyHtml = $('.t_qn_question_content .qc_body').first().html()?.trim() ?? $('.qc_body').first().html()?.trim() ?? ''
+  const rawQuestionHtml = parentStems.length
+    ? `${parentStems.join('\n')}\n<div class="qb-leaf-prompt">${leafBodyHtml}</div>`
+    : leafBodyHtml
   const rawMarkschemeHtml = $('.qc_markscheme .card-body').first().html()?.trim() ?? ''
   const q = extractInlineImages(rawQuestionHtml)
   const m = extractInlineImages(rawMarkschemeHtml)

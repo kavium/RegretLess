@@ -88,15 +88,7 @@ describe('question ordering', () => {
   it('moves completed questions to the bottom', () => {
     const canonical = buildCanonicalQuestionSequence(bundle, selection, index)
     expect(
-      orderQuestionIds(
-        canonical,
-        bundle,
-        {
-          q2: { completed: true, difficult: false, updatedAt: 'now' },
-        },
-        'source',
-        0,
-      ),
+      orderQuestionIds(canonical, bundle, new Set(['q2']), 'source', 0),
     ).toEqual(['q1', 'q3', 'q4', 'q2'])
   })
 

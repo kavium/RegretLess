@@ -23,24 +23,21 @@ const pad = (n: number) => String(n).padStart(2, '0')
 function CountdownCard() {
   const [t, setT] = useState(getTimeLeft)
   useEffect(() => {
+    if (t.over) return
     const id = window.setInterval(() => setT(getTimeLeft()), 1000)
     return () => window.clearInterval(id)
-  }, [])
+  }, [t.over])
+
+  if (t.over) return null
 
   return (
     <div className="picker__hero-card">
       <div className="picker__countdown">
-        <div className="picker__countdown-headline">
-          {t.over ? 'Best of luck!' : 'Good Luck for M26 Exams!'}
+        <div className="picker__countdown-headline">Good Luck for M26 Exams!</div>
+        <div className="picker__countdown-label">— Time until M26 —</div>
+        <div className="picker__countdown-time">
+          {t.d}d · {pad(t.h)}h · {pad(t.m)}m · {pad(t.s)}s
         </div>
-        {!t.over ? (
-          <>
-            <div className="picker__countdown-label">— Time until M26 —</div>
-            <div className="picker__countdown-time">
-              {t.d}d · {pad(t.h)}h · {pad(t.m)}m · {pad(t.s)}s
-            </div>
-          </>
-        ) : null}
       </div>
     </div>
   )
@@ -100,8 +97,8 @@ export function SubjectPickerPage() {
               </div>
               <h3 className="picker__vol-name">{s.name}</h3>
               <div className="picker__vol-tags">
-                {['Paper 1A', 'Paper 2', 'Paper 3'].map((p) => (
-                  <span key={p} className="picker__vol-tag">{p}</span>
+                {(s.paperCoverage && s.paperCoverage.length ? s.paperCoverage : ['1A', '2', '3']).map((p) => (
+                  <span key={p} className="picker__vol-tag">{p === '2' ? 'Paper 2' : `Paper ${p}`}</span>
                 ))}
               </div>
               <div className="picker__vol-foot">

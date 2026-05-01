@@ -1,4 +1,6 @@
+import { z } from 'zod'
 import { getCacheItem, setCacheItem } from './cache'
+import { QuestionDetailSchema, SubjectBundleSchema, SubjectIdSchema, SubjectManifestSchema } from './schemas'
 import type { QuestionDetail, SubjectBundle, SubjectManifest } from '../types'
 
 function normalizeLevel(value: string): 'SL' | 'HL' {
@@ -34,6 +36,11 @@ interface CachedQuestionDetail {
 
 const DATA_BASE_URL = (import.meta.env.VITE_DATA_BASE_URL as string | undefined)?.replace(/\/$/, '')
 
+function assertSubjectId(subjectId: string): asserts subjectId is string {
+  const parsed = SubjectIdSchema.safeParse(subjectId)
+  if (!parsed.success) throw new Error(`invalid subjectId: ${subjectId}`)
+}
+
 function resolveAssetUrl(path: string) {
   if (/^https?:\/\//.test(path)) {
     return path
@@ -48,12 +55,13 @@ function resolveAssetUrl(path: string) {
 }
 
 function imageBaseFor(subjectId: string) {
+  assertSubjectId(subjectId)
   if (DATA_BASE_URL) return `${DATA_BASE_URL}/subjects/${subjectId}/img`
   const baseUrl = new URL(import.meta.env.BASE_URL, window.location.origin)
   return new URL(`data/subjects/${subjectId}/img`, baseUrl).toString()
 }
 
-async function fetchJson<T>(path: string) {
+async function fetchJsonValidated<T>(path: string, schema: z.ZodType<T>): Promise<T> {
   const response = await fetch(resolveAssetUrl(path), {
     cache: 'no-store',
   })
@@ -62,21 +70,26 @@ async function fetchJson<T>(path: string) {
     throw new Error(`Failed to fetch ${path}: ${response.status}`)
   }
 
-  return (await response.json()) as T
+  const json = await response.json()
+  const parsed = schema.safeParse(json)
+  if (!parsed.success) {
+    console.warn(`schema mismatch fetching ${path}:`, parsed.error.issues.slice(0, 3))
+    throw new Error(`schema validation failed for ${path}`)
+  }
+  return parsed.data
 }
 
 export async function loadPublishedManifest(): Promise<SubjectManifest> {
   try {
-    const manifest = await fetchJson<SubjectManifest>(`/data/manifest.json?t=${Date.now()}`)
+    const manifest = await fetchJsonValidated(
+      `/data/manifest.json?t=${Date.now()}`,
+      SubjectManifestSchema,
+    )
     await setCacheItem<CachedManifestRecord>('manifest', { data: manifest })
     return manifest
   } catch (error) {
     const cached = await getCacheItem<CachedManifestRecord>('manifest')
-
-    if (cached) {
-      return cached.data
-    }
-
+    if (cached) return cached.data
     throw error
   }
 }
@@ -85,6 +98,7 @@ export async function loadPublishedSubjectBundle(
   manifest: SubjectManifest,
   subjectId: string,
 ): Promise<SubjectBundle> {
+  assertSubjectId(subjectId)
   const subject = manifest.subjects.find((entry) => entry.id === subjectId)
 
   if (!subject) {
@@ -98,7 +112,7 @@ export async function loadPublishedSubjectBundle(
     return normalizeBundle(cached.data)
   }
 
-  const raw = await fetchJson<SubjectBundle>(subject.bundleUrl)
+  const raw = await fetchJsonValidated(subject.bundleUrl, SubjectBundleSchema)
   const bundle = normalizeBundle(raw)
   await setCacheItem<CachedBundleRecord>(cacheKey, {
     hash: subject.bundleHash,
@@ -111,11 +125,17 @@ export async function loadQuestionDetail(
   subjectId: string,
   questionId: string,
 ): Promise<QuestionDetail> {
+  assertSubjectId(subjectId)
+  if (!/^[\w-]+$/.test(questionId)) throw new Error(`invalid questionId: ${questionId}`)
+
   const cacheKey = `question:${subjectId}:${questionId}`
   const cached = await getCacheItem<CachedQuestionDetail>(cacheKey)
   if (cached) return cached.data
 
-  const fetched = await fetchJson<QuestionDetail>(`/data/subjects/${subjectId}/q/${questionId}.json`)
+  const fetched = await fetchJsonValidated(
+    `/data/subjects/${subjectId}/q/${questionId}.json`,
+    QuestionDetailSchema,
+  )
   const imgBase = imageBaseFor(subjectId)
   const detail: QuestionDetail = {
     ...fetched,
@@ -127,44 +147,21 @@ export async function loadQuestionDetail(
 }
 
 async function triggerScrape(): Promise<{ ok: boolean; available: boolean }> {
-  const repo = (import.meta.env.VITE_GH_REPO as string | undefined)?.trim()
-  const token = window.localStorage.getItem('qol-ib-qb:gh-token')
-  if (!repo || !token) {
-    try {
-      const response = await fetch('/api/refresh', { method: 'POST' })
-      return { ok: response.ok, available: response.status !== 404 && response.status !== 405 }
-    } catch {
-      return { ok: false, available: false }
-    }
-  }
-
   try {
-    const response = await fetch(
-      `https://api.github.com/repos/${repo}/actions/workflows/scrape.yml/dispatches`,
-      {
-        method: 'POST',
-        headers: {
-          accept: 'application/vnd.github+json',
-          authorization: `Bearer ${token}`,
-          'x-github-api-version': '2022-11-28',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({ ref: 'main' }),
-      },
-    )
-    return { ok: response.ok, available: true }
+    const response = await fetch('/api/refresh', { method: 'POST' })
+    return { ok: response.ok, available: response.status !== 404 && response.status !== 405 }
   } catch {
     return { ok: false, available: false }
   }
 }
 
-export async function refreshPublishedData(
-  currentManifest: SubjectManifest | null,
-  _subjectId?: string,
-) {
+export async function refreshPublishedData(currentManifest: SubjectManifest | null) {
   const scrape = await triggerScrape()
 
-  const manifest = await fetchJson<SubjectManifest>(`/data/manifest.json?t=${Date.now()}`)
+  const manifest = await fetchJsonValidated(
+    `/data/manifest.json?t=${Date.now()}`,
+    SubjectManifestSchema,
+  )
 
   const changedSubjectIds = manifest.subjects
     .filter((subject) => {
