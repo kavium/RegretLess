@@ -7,30 +7,30 @@ type BundleState =
   | { status: 'loading'; bundle: null; error: null }
   | { status: 'ready'; bundle: SubjectBundle; error: null }
   | { status: 'error'; bundle: null; error: string }
+type ResolvedBundleState =
+  | { key: string; status: 'ready'; bundle: SubjectBundle; error: null }
+  | { key: string; status: 'error'; bundle: null; error: string }
 
 const IDLE: BundleState = { status: 'idle', bundle: null, error: null }
 
 export function useSubjectBundle(subjectId: string | undefined) {
   const { manifest, loadSubjectBundle } = useDataContext()
-  const [state, setState] = useState<BundleState>(IDLE)
-  const [lastKey, setLastKey] = useState<string | null>(null)
-
+  const [resolvedState, setResolvedState] = useState<ResolvedBundleState | null>(null)
   const key = subjectId && manifest ? subjectId : null
-  if (lastKey !== key) {
-    setLastKey(key)
-    setState(key ? { status: 'loading', bundle: null, error: null } : IDLE)
-  }
 
   useEffect(() => {
     if (!key) return
-    let cancelled = false
+
+    const controller = new AbortController()
+
     void (async () => {
       try {
-        const nextBundle = await loadSubjectBundle(key)
-        if (!cancelled) setState({ status: 'ready', bundle: nextBundle, error: null })
+        const nextBundle = await loadSubjectBundle(key, controller.signal)
+        if (!controller.signal.aborted) setResolvedState({ key, status: 'ready', bundle: nextBundle, error: null })
       } catch (nextError) {
-        if (!cancelled) {
-          setState({
+        if (!controller.signal.aborted) {
+          setResolvedState({
+            key,
             status: 'error',
             bundle: null,
             error: nextError instanceof Error ? nextError.message : 'Failed to load subject bundle',
@@ -38,10 +38,19 @@ export function useSubjectBundle(subjectId: string | undefined) {
         }
       }
     })()
+
     return () => {
-      cancelled = true
+      controller.abort()
     }
   }, [key, loadSubjectBundle])
 
-  return state
+  if (!key) {
+    return IDLE
+  }
+
+  if (!resolvedState || resolvedState.key !== key) {
+    return { status: 'loading', bundle: null, error: null } satisfies BundleState
+  }
+
+  return resolvedState
 }

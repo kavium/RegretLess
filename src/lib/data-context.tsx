@@ -8,7 +8,7 @@ interface DataContextValue {
   manifest: SubjectManifest | null
   status: 'idle' | 'loading' | 'ready' | 'error'
   error: string | null
-  loadSubjectBundle: (subjectId: string) => Promise<SubjectBundle>
+  loadSubjectBundle: (subjectId: string, signal?: AbortSignal) => Promise<SubjectBundle>
   refreshPublishedData: () => Promise<{ changedSubjectIds: string[]; scraped: boolean }>
 }
 
@@ -21,21 +21,21 @@ export function DataProvider({ children }: PropsWithChildren) {
   const inflightBundles = useRef(new Map<string, Promise<SubjectBundle>>())
 
   useEffect(() => {
-    let cancelled = false
+    const controller = new AbortController()
 
     async function boot() {
       setStatus('loading')
       setError(null)
 
       try {
-        const nextManifest = await loadPublishedManifest()
+        const nextManifest = await loadPublishedManifest(controller.signal)
 
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setManifest(nextManifest)
           setStatus('ready')
         }
       } catch (nextError) {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setStatus('error')
           setError(nextError instanceof Error ? nextError.message : 'Failed to load published manifest')
         }
@@ -45,27 +45,37 @@ export function DataProvider({ children }: PropsWithChildren) {
     void boot()
 
     return () => {
-      cancelled = true
+      controller.abort()
     }
   }, [])
 
   const loadSubjectBundle = useCallback(
-    async (subjectId: string) => {
+    async (subjectId: string, signal?: AbortSignal) => {
       if (!manifest) {
         throw new Error('Manifest not ready')
       }
 
-      const cachedPromise = inflightBundles.current.get(subjectId)
-
-      if (cachedPromise) {
-        return cachedPromise
+      if (signal?.aborted) {
+        throw new DOMException('Aborted', 'AbortError')
       }
 
-      const nextPromise = loadPublishedSubjectBundle(manifest, subjectId).finally(() => {
-        inflightBundles.current.delete(subjectId)
+      if (!signal) {
+        const cachedPromise = inflightBundles.current.get(subjectId)
+
+        if (cachedPromise) {
+          return cachedPromise
+        }
+      }
+
+      const nextPromise = loadPublishedSubjectBundle(manifest, subjectId, signal).finally(() => {
+        if (!signal) {
+          inflightBundles.current.delete(subjectId)
+        }
       })
 
-      inflightBundles.current.set(subjectId, nextPromise)
+      if (!signal) {
+        inflightBundles.current.set(subjectId, nextPromise)
+      }
       return nextPromise
     },
     [manifest],

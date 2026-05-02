@@ -45,8 +45,9 @@ export function buildCanonicalQuestionSequence(
   selection: NormalizedSelection,
   index: SyllabusIndex,
 ) {
+  const selectedSectionIds = new Set([...selection.umbrellaIds, ...selection.subunitIds])
   const orderedSectionIds = index.orderedIds.filter(
-    (nodeId) => selection.umbrellaIds.includes(nodeId) || selection.subunitIds.includes(nodeId),
+    (nodeId) => selectedSectionIds.has(nodeId),
   )
   const seen = new Set<string>()
   const questionIds: string[] = []

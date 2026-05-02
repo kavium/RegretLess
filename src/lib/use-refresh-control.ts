@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDataContext } from './data-context'
 
 export type RefreshState = 'idle' | 'working' | 'done'
@@ -15,7 +15,7 @@ export function useRefreshControl() {
     }
   }, [])
 
-  async function handleRefresh() {
+  const handleRefresh = useCallback(async () => {
     setRefreshState('working')
     setResultMsg(null)
     try {
@@ -29,10 +29,11 @@ export function useRefreshControl() {
         setResultMsg(null)
         timeoutRef.current = null
       }, 2400)
-    } catch {
-      setRefreshState('idle')
+    } catch (error) {
+      setRefreshState('done')
+      setResultMsg(error instanceof Error ? error.message : 'Refresh failed')
     }
-  }
+  }, [refreshPublishedData])
 
   const label =
     refreshState === 'working'

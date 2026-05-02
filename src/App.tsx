@@ -1,5 +1,5 @@
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { DataProvider } from './lib/data-context'
 import { SubjectPickerPage } from './pages/SubjectPickerPage'
 import { StudySetupPage } from './pages/StudySetupPage'
@@ -23,9 +23,7 @@ function KeyedWorkspace() {
 function AppFrame() {
   const location = useLocation()
   const navigate = useNavigate()
-  const [resumeDismissed, setResumeDismissed] = useState(false)
-  const [resumeSnapshot, setResumeSnapshot] = useState(() => getResumeState())
-  const [lastResumeKey, setLastResumeKey] = useState<string | null>(null)
+  const [dismissedResumeKey, setDismissedResumeKey] = useState<string | null>(null)
 
   useEffect(() => {
     void ensureMathJax()
@@ -33,17 +31,15 @@ function AppFrame() {
 
   const onSubjectPicker = location.pathname === '/'
   const cameFromLogo = (location.state as { fromLogo?: boolean } | null)?.fromLogo === true
-
-  // Refresh snapshot + reset dismissed flag whenever we re-enter the picker via a non-logo nav.
-  // setState-during-render with a guard is React's recommended pattern for "reset on key change".
-  if (onSubjectPicker && !cameFromLogo && lastResumeKey !== location.key) {
-    setLastResumeKey(location.key)
-    setResumeSnapshot(getResumeState())
-    setResumeDismissed(false)
-  }
-
-  const safeSnapshot = resumeSnapshot && isSafeResumeUrl(resumeSnapshot.workspaceUrl) ? resumeSnapshot : null
-  const shouldOfferResume = Boolean(safeSnapshot && !resumeDismissed && onSubjectPicker && !cameFromLogo)
+  const resumeKey = onSubjectPicker && !cameFromLogo ? location.key : null
+  const safeSnapshot = useMemo(() => {
+    if (!resumeKey) {
+      return null
+    }
+    const nextSnapshot = getResumeState()
+    return nextSnapshot && isSafeResumeUrl(nextSnapshot.workspaceUrl) ? nextSnapshot : null
+  }, [resumeKey])
+  const shouldOfferResume = Boolean(safeSnapshot && resumeKey !== null && dismissedResumeKey !== resumeKey)
 
   return (
     <div className="app-shell">
@@ -59,15 +55,14 @@ function AppFrame() {
       {shouldOfferResume && safeSnapshot ? (
         <ResumeModal
           resume={safeSnapshot}
-          onDismiss={() => setResumeDismissed(true)}
+          onDismiss={() => setDismissedResumeKey(resumeKey)}
           onResume={() => {
-            setResumeDismissed(true)
+            setDismissedResumeKey(resumeKey)
             navigate(safeSnapshot.workspaceUrl)
           }}
           onForget={() => {
             clearResumeState()
-            setResumeSnapshot(null)
-            setResumeDismissed(true)
+            setDismissedResumeKey(resumeKey)
           }}
         />
       ) : null}

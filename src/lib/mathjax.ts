@@ -7,6 +7,7 @@ declare global {
 }
 
 let scriptPromise: Promise<void> | null = null
+let warnedTypesetFailure = false
 
 export function ensureMathJax() {
   if (window.MathJax?.typesetPromise) {
@@ -37,6 +38,11 @@ export function ensureMathJax() {
     document.head.append(script)
   })
 
+  scriptPromise = scriptPromise.catch((error) => {
+    scriptPromise = null
+    throw error
+  })
+
   return scriptPromise
 }
 
@@ -51,7 +57,10 @@ export async function typesetMath(container: HTMLElement | null) {
     if (window.MathJax?.typesetPromise) {
       await window.MathJax.typesetPromise([container])
     }
-  } catch {
-    // Keep the app usable even if MathJax is unavailable.
+  } catch (error) {
+    if (!warnedTypesetFailure) {
+      warnedTypesetFailure = true
+      console.warn(error instanceof Error ? error.message : 'MathJax failed to typeset')
+    }
   }
 }

@@ -23,6 +23,12 @@ interface VirtualQuestionListProps {
   renderRow: (questionId: string) => React.ReactNode
 }
 
+interface QuestionUiState {
+  orderKey: string
+  completedSnapshot: Set<string>
+  revealedMs: Record<string, boolean>
+}
+
 function VirtualQuestionList({ questionIds, renderRow }: VirtualQuestionListProps) {
   const parentRef = useRef<HTMLDivElement | null>(null)
   const [parentOffset, setParentOffset] = useState(0)
@@ -87,38 +93,51 @@ export function WorkspacePage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { subjectId } = useParams()
-  const { refreshPublishedData } = useDataContext()
+  const { manifest, refreshPublishedData } = useDataContext()
   const { bundle, status, error } = useSubjectBundle(subjectId)
   const [searchParams] = useSearchParams()
   // KeyedWorkspace in App.tsx remounts this component on subjectId change, so all
   // per-subject state initialises fresh from storage; no in-render reset needed.
   const [userState, setUserState] = useState(() => (subjectId ? getUserQuestionState(subjectId) : {}))
-  const [revealedMs, setRevealedMs] = useState<Record<string, boolean>>({})
   const [details, setDetails] = useState<Record<string, QuestionDetail | 'loading' | 'error'>>({})
   const [refreshState, setRefreshState] = useState<'idle' | 'working'>('idle')
   const [completedTip, setCompletedTip] = useState<{ id: string; anchor: HTMLElement } | null>(null)
   const restoreAttempted = useRef(false)
   const detailAttemptsRef = useRef<Map<string, 'pending' | 'done' | 'failed'>>(new Map())
   const [retryTick, setRetryTick] = useState(0)
+  const bundleHash = useMemo(
+    () => manifest?.subjects.find((entry) => entry.id === subjectId)?.bundleHash ?? null,
+    [manifest, subjectId],
+  )
 
   const expandedId = useMemo(() => parseWorkspaceFilters(searchParams).expandedQuestionId, [searchParams])
 
   useEffect(() => {
-    if (!subjectId || !expandedId) return
+    if (!subjectId || !bundleHash || !expandedId) return
+
     const status = detailAttemptsRef.current.get(expandedId)
     if (status === 'pending' || status === 'done') return
+    const controller = new AbortController()
     detailAttemptsRef.current.set(expandedId, 'pending')
     setDetails((cur) => ({ ...cur, [expandedId]: 'loading' }))
-    loadQuestionDetail(subjectId, expandedId)
+    loadQuestionDetail(subjectId, expandedId, bundleHash, controller.signal)
       .then((detail) => {
+        if (controller.signal.aborted) return
         detailAttemptsRef.current.set(expandedId, 'done')
         setDetails((cur) => ({ ...cur, [expandedId]: detail }))
       })
-      .catch(() => {
+      .catch((nextError) => {
+        if (controller.signal.aborted) return
         detailAttemptsRef.current.set(expandedId, 'failed')
+        if (nextError instanceof Error && nextError.name !== 'AbortError') {
+          console.warn(nextError.message)
+        }
         setDetails((cur) => ({ ...cur, [expandedId]: 'error' }))
       })
-  }, [subjectId, expandedId, retryTick])
+    return () => {
+      controller.abort()
+    }
+  }, [subjectId, bundleHash, expandedId, retryTick])
 
   const retryDetail = useCallback((id: string) => {
     detailAttemptsRef.current.delete(id)
@@ -152,27 +171,33 @@ export function WorkspacePage() {
     [subjectId, searchParams, filters.paperFilters, filters.levelFilters, filters.onlyDifficult, filters.orderMode, filters.scrambleNonce],
   )
 
-  // completedSnapshot is captured at the moment orderKey changes (so questions newly marked
-  // completed mid-session don't reshuffle to the bottom). React-recommended: update via
-  // setState-during-render guard, not refs-during-render.
-  const [completedSnapshot, setCompletedSnapshot] = useState<Set<string>>(() => new Set())
-  const [snapshotKey, setSnapshotKey] = useState<string | null>(null)
-  if (snapshotKey !== orderKey) {
-    setSnapshotKey(orderKey)
-    setCompletedSnapshot(new Set(Object.keys(userState).filter((id) => userState[id]?.completed)))
-    setRevealedMs({})
-  }
+  const [questionUiState, setQuestionUiState] = useState<QuestionUiState>(() => ({
+    orderKey,
+    completedSnapshot: new Set(Object.keys(userState).filter((id) => userState[id]?.completed)),
+    revealedMs: {},
+  }))
+  const questionUi = useMemo(
+    () =>
+      questionUiState.orderKey === orderKey
+        ? questionUiState
+        : {
+            orderKey,
+            completedSnapshot: new Set(Object.keys(userState).filter((id) => userState[id]?.completed)),
+            revealedMs: {},
+          },
+    [orderKey, questionUiState, userState],
+  )
 
   const visibleQuestionIds = useMemo(() => {
     if (!bundle) return []
     return orderQuestionIds(
       applyQuestionFilters(bundle, canonicalQuestionIds, filters, userState, questionMap),
       bundle,
-      completedSnapshot,
+      questionUi.completedSnapshot,
       filters.orderMode,
       filters.scrambleNonce,
     )
-  }, [bundle, canonicalQuestionIds, filters, userState, questionMap, completedSnapshot])
+  }, [bundle, canonicalQuestionIds, filters, userState, questionMap, questionUi])
 
   const availablePapers = useMemo(() => (bundle ? getAvailablePapers(bundle) : []), [bundle])
   const availableLevels = useMemo(() => (bundle ? getAvailableLevels(bundle) : []), [bundle])
@@ -180,6 +205,15 @@ export function WorkspacePage() {
     () => (selection && syllabusIndex ? getSelectionLabels(selection, syllabusIndex) : []),
     [selection, syllabusIndex],
   )
+  const { completedCount, difficultCount } = useMemo(() => {
+    let completed = 0
+    let difficult = 0
+    for (const questionId of visibleQuestionIds) {
+      if (userState[questionId]?.completed) completed += 1
+      if (userState[questionId]?.difficult) difficult += 1
+    }
+    return { completedCount: completed, difficultCount: difficult }
+  }, [userState, visibleQuestionIds])
 
   useEffect(() => {
     if (!subjectId) return
@@ -268,8 +302,6 @@ export function WorkspacePage() {
     }
   }
 
-  const completedCount = visibleQuestionIds.filter((id) => userState[id]?.completed).length
-  const difficultCount = visibleQuestionIds.filter((id) => userState[id]?.difficult).length
   const subjectShort = bundle.subject.name.split(':')[0].trim()
 
   return (
@@ -384,7 +416,7 @@ export function WorkspacePage() {
 
           const expanded = filters.expandedQuestionId === questionId
           const qs = userState[questionId]
-          const msRevealed = Boolean(revealedMs[questionId])
+          const msRevealed = Boolean(questionUi.revealedMs[questionId])
           const paperTint = PAPER_TINTS[question.paper] ?? 'rose'
 
           return (
@@ -484,7 +516,25 @@ export function WorkspacePage() {
                         <button
                           type="button"
                           className="ws__q-reveal"
-                          onClick={() => setRevealedMs((cur) => ({ ...cur, [questionId]: !cur[questionId] }))}
+                          onClick={() =>
+                            setQuestionUiState((cur) => {
+                              const base =
+                                cur.orderKey === orderKey
+                                  ? cur
+                                  : {
+                                      orderKey,
+                                      completedSnapshot: questionUi.completedSnapshot,
+                                      revealedMs: {},
+                                    }
+                              return {
+                                ...base,
+                                revealedMs: {
+                                  ...base.revealedMs,
+                                  [questionId]: !base.revealedMs[questionId],
+                                },
+                              }
+                            })
+                          }
                         >
                           <BookOpen size={14} /> {msRevealed ? 'hide mark scheme' : 'reveal mark scheme'}
                         </button>
