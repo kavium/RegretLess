@@ -1,6 +1,6 @@
 # QOL IB Questionbank
 
-Static GitHub Pages app for building mixed-unit IB practice sets with:
+Static Vite app for building mixed-unit IB practice sets with:
 
 - subject picker backed by published JSON bundles
 - mixed umbrella + subunit selection with normalization
@@ -35,5 +35,8 @@ npm run ingest
 
 ## Deployment
 
-- `.github/workflows/deploy.yml` builds and deploys the static app to GitHub Pages.
-- `.github/workflows/refresh-data.yml` refreshes published question data on schedule or manual dispatch.
+- Vercel hosts the site and should be connected to this repo for automatic production deploys from `main` plus preview deploys for pull requests.
+- Set `VITE_DATA_BASE_URL` in Vercel to `https://cdn.statically.io/gh/<owner>/<repo>@data` so production reads the published JSON bundles from the GitHub-backed `data` branch.
+- `.github/workflows/ci.yml` runs repository checks only; it does not deploy the site.
+- `.github/workflows/scrape.yml` refreshes published question data on schedule or manual dispatch and pushes updates to the `data` branch.
+- `VITE_BASE` is not needed for Vercel production hosting.
