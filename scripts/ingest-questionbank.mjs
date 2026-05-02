@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { access, mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Agent, setGlobalDispatcher } from 'undici'
 import { normalizeLevel, parseQuestionPage, parseSectionPage, parseSubjectLinksFromHtml, parseSyllabusPage } from './lib/parsers.mjs'
@@ -9,10 +9,12 @@ const DEFAULT_SEED_URL =
 const SUBJECT_CONCURRENCY = 3
 const SECTION_CONCURRENCY = 3
 const QUESTION_CONCURRENCY = 6
+const CACHE_CHECK_CONCURRENCY = 8
 const FETCH_TIMEOUT_MS = 120000
 const HASHED_BUNDLES_TO_KEEP = 2
 // Bump when parseQuestionPage output shape changes so cached q/<id>.json files are re-fetched.
 const QUESTION_SCHEMA_VERSION = 2
+const SAFE_ID_PATTERN = /^(?!__proto__$)(?!constructor$)(?!prototype$)[A-Za-z0-9_-]+$/
 
 setGlobalDispatcher(
   new Agent({
@@ -24,6 +26,41 @@ setGlobalDispatcher(
 )
 const OUT_DIR = path.resolve(process.cwd(), 'public/data')
 const SUBJECT_DIR = path.join(OUT_DIR, 'subjects')
+let allowedSourceOrigin = new URL(DEFAULT_SEED_URL).origin
+
+function assertSafeId(value, label) {
+  if (!SAFE_ID_PATTERN.test(value)) {
+    throw new Error(`invalid ${label}: ${value}`)
+  }
+}
+
+function resolveInside(baseDir, ...segments) {
+  const resolved = path.resolve(baseDir, ...segments)
+  const baseWithSep = `${path.resolve(baseDir)}${path.sep}`
+  if (resolved !== path.resolve(baseDir) && !resolved.startsWith(baseWithSep)) {
+    throw new Error(`path escaped base dir: ${resolved}`)
+  }
+  return resolved
+}
+
+function resolveSubjectPath(subjectId, ...segments) {
+  assertSafeId(subjectId, 'subject id')
+  const subjectDir = resolveInside(SUBJECT_DIR, subjectId)
+  return segments.length ? resolveInside(subjectDir, ...segments) : subjectDir
+}
+
+function resolveQuestionPath(subjectId, questionId) {
+  assertSafeId(questionId, 'question id')
+  return resolveSubjectPath(subjectId, 'q', `${questionId}.json`)
+}
+
+function assertAllowedSourceUrl(rawUrl) {
+  const url = new URL(rawUrl)
+  if (url.protocol !== 'https:' || url.username || url.password || url.origin !== allowedSourceOrigin) {
+    throw new Error(`disallowed source URL: ${rawUrl}`)
+  }
+  return url.toString()
+}
 
 function parseArgs(argv) {
   const options = {
@@ -42,11 +79,17 @@ function parseArgs(argv) {
 
     if (arg.startsWith('--subjects=')) {
       options.subjects = arg.split('=')[1].split(',').map((value) => value.trim()).filter(Boolean)
+      for (const subjectId of options.subjects) {
+        assertSafeId(subjectId, 'subject id')
+      }
       continue
     }
 
     if (arg.startsWith('--limit=')) {
-      options.maxQuestionsPerSubject = Number.parseInt(arg.split('=')[1], 10)
+      const parsed = Number.parseInt(arg.split('=')[1], 10)
+      if (Number.isSafeInteger(parsed) && parsed >= 0) {
+        options.maxQuestionsPerSubject = parsed
+      }
       continue
     }
   }
@@ -55,11 +98,13 @@ function parseArgs(argv) {
 }
 
 async function fetchHtml(url, retries = 10) {
+  const safeUrl = assertAllowedSourceUrl(url)
+
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
     try {
-      const response = await fetch(url, {
+      const response = await fetch(safeUrl, {
         headers: {
           'user-agent': 'Mozilla/5.0',
           accept: 'text/html,application/xhtml+xml',
@@ -68,11 +113,12 @@ async function fetchHtml(url, retries = 10) {
       })
 
       if (response.ok) {
+        assertAllowedSourceUrl(response.url)
         return response.text()
       }
 
       if (attempt === retries) {
-        throw new Error(`Failed to fetch ${url}: ${response.status}`)
+        throw new Error(`Failed to fetch ${safeUrl}: ${response.status}`)
       }
     } catch (error) {
       if (attempt === retries) {
@@ -86,7 +132,7 @@ async function fetchHtml(url, retries = 10) {
     await new Promise((resolve) => setTimeout(resolve, backoff))
   }
 
-  throw new Error(`Failed to fetch ${url}`)
+  throw new Error(`Failed to fetch ${safeUrl}`)
 }
 
 async function readJson(filePath) {
@@ -171,10 +217,19 @@ async function pruneOldHashedBundles(subjectDir, keepHash) {
   } catch {
     return
   }
-  const hashedFiles = entries
-    .filter((name) => /^index-[0-9a-f]+\.json$/.test(name))
-    .filter((name) => !name.includes(keepHash))
-  for (const name of hashedFiles.slice(0, Math.max(0, hashedFiles.length - HASHED_BUNDLES_TO_KEEP))) {
+  const hashedFiles = (
+    await Promise.all(
+      entries
+        .filter((name) => /^index-[0-9a-f]+\.json$/.test(name))
+        .filter((name) => !name.includes(keepHash))
+        .map(async (name) => ({
+          name,
+          mtimeMs: (await stat(path.join(subjectDir, name))).mtimeMs,
+        })),
+    )
+  )
+    .sort((left, right) => right.mtimeMs - left.mtimeMs)
+  for (const { name } of hashedFiles.slice(HASHED_BUNDLES_TO_KEEP)) {
     try {
       await unlink(path.join(subjectDir, name))
     } catch {
@@ -184,14 +239,15 @@ async function pruneOldHashedBundles(subjectDir, keepHash) {
 }
 
 async function ingestSubject(subject, options) {
-  const subjectDir = path.join(SUBJECT_DIR, subject.id)
-  const questionsDir = path.join(subjectDir, 'q')
+  assertSafeId(subject.id, 'subject id')
+  const subjectDir = resolveSubjectPath(subject.id)
+  const questionsDir = resolveSubjectPath(subject.id, 'q')
   await mkdir(questionsDir, { recursive: true })
 
-  const indexPath = path.join(subjectDir, 'index.json')
+  const indexPath = resolveSubjectPath(subject.id, 'index.json')
   const existingIndex = await readJson(indexPath)
 
-  const syllabusUrl = subject.url
+  const syllabusUrl = assertAllowedSourceUrl(subject.url)
   const syllabusHtml = await fetchHtml(syllabusUrl)
   const syllabus = parseSyllabusPage(syllabusHtml, syllabusUrl)
 
@@ -208,10 +264,13 @@ async function ingestSubject(subject, options) {
   const sectionOrderIndex = Object.fromEntries(syllabus.map((node) => [node.id, node.canonicalOrder]))
   let addedQuestionCount = 0
   let sectionFetchFailures = 0
+  let remainingQuestionSlots = options.maxQuestionsPerSubject
+  const inflightQuestionFetches = new Map()
+  const reservedQuestionIds = new Set()
 
   console.log(`[${subject.id}] ${syllabus.length} sections, ${metaMap.size} cached questions`)
 
-  const imagesDir = path.join(subjectDir, 'img')
+  const imagesDir = resolveSubjectPath(subject.id, 'img')
   await mkdir(imagesDir, { recursive: true })
 
   let sectionsDone = 0
@@ -255,26 +314,81 @@ async function ingestSubject(subject, options) {
     return true
   }
 
+  function tryClaimQuestionSlot() {
+    if (!Number.isFinite(remainingQuestionSlots)) {
+      return true
+    }
+    if (remainingQuestionSlots <= 0) {
+      return false
+    }
+    remainingQuestionSlots -= 1
+    return true
+  }
+
+  async function ensureQuestionCached(entry) {
+    assertSafeId(entry.questionId, 'question id')
+    const existing = inflightQuestionFetches.get(entry.questionId)
+    if (existing) {
+      return existing
+    }
+
+    const nextPromise = (async () => {
+      const questionHtml = await fetchHtml(entry.url)
+      const { meta, detail, images } = parseQuestionPage(questionHtml, entry.url, subject.id)
+      assertSafeId(meta.questionId, 'question id')
+
+      for (const image of images ?? []) {
+        const imagePath = resolveInside(imagesDir, image.filename)
+        if (!(await fileExists(imagePath))) {
+          await writeFile(imagePath, Buffer.from(image.base64, 'base64'))
+        }
+      }
+
+      await writeJsonAtomic(resolveQuestionPath(subject.id, entry.questionId), {
+        ...detail,
+        meta,
+        schemaVersion: QUESTION_SCHEMA_VERSION,
+      })
+      metaMap.set(entry.questionId, meta)
+      addedQuestionCount += 1
+    })().finally(() => {
+      inflightQuestionFetches.delete(entry.questionId)
+    })
+
+    inflightQuestionFetches.set(entry.questionId, nextPromise)
+    return nextPromise
+  }
+
   await runWithConcurrency(syllabus, SECTION_CONCURRENCY, async (section) => {
-    const sectionUrl = new URL(`syllabus_sections/${section.id}.html`, syllabusUrl).toString()
+    assertSafeId(section.id, 'section id')
+    const sectionUrl = assertAllowedSourceUrl(new URL(`syllabus_sections/${section.id}.html`, syllabusUrl).toString())
     let sectionQuestions = null
 
     const cachedIds = cachedSectionOrder[section.id]
     if (Array.isArray(cachedIds) && cachedIds.length > 0) {
-      const allCached = await Promise.all(
-        cachedIds.map(async (qid) => {
-          if (!metaMap.has(qid)) return false
-          const detailPath = path.join(questionsDir, `${qid}.json`)
-          if (!(await fileExists(detailPath))) return false
-          try {
-            const cached = JSON.parse(await readFile(detailPath, 'utf8'))
-            return cached?.schemaVersion === QUESTION_SCHEMA_VERSION
-          } catch {
-            return false
+      let allCached = true
+      await runWithConcurrency(cachedIds, CACHE_CHECK_CONCURRENCY, async (qid) => {
+        if (!allCached) return
+        assertSafeId(qid, 'question id')
+        if (!metaMap.has(qid)) {
+          allCached = false
+          return
+        }
+        const detailPath = resolveQuestionPath(subject.id, qid)
+        if (!(await fileExists(detailPath))) {
+          allCached = false
+          return
+        }
+        try {
+          const cached = JSON.parse(await readFile(detailPath, 'utf8'))
+          if (cached?.schemaVersion !== QUESTION_SCHEMA_VERSION) {
+            allCached = false
           }
-        }),
-      )
-      if (allCached.every(Boolean)) {
+        } catch {
+          allCached = false
+        }
+      })
+      if (allCached) {
         sectionQuestions = cachedIds.map((qid) => ({ questionId: qid, url: '' }))
       }
     }
@@ -304,7 +418,11 @@ async function ingestSubject(subject, options) {
 
     const toFetch = []
     for (const entry of sectionQuestions) {
-      const detailPath = path.join(questionsDir, `${entry.questionId}.json`)
+      assertSafeId(entry.questionId, 'question id')
+      if (entry.url) {
+        entry.url = assertAllowedSourceUrl(entry.url)
+      }
+      const detailPath = resolveQuestionPath(subject.id, entry.questionId)
       const hasMeta = metaMap.has(entry.questionId)
       const hasDetail = await fileExists(detailPath)
       let cachedSchemaVersion = null
@@ -319,23 +437,18 @@ async function ingestSubject(subject, options) {
       }
       const cacheFresh = hasDetail && cachedSchemaVersion === QUESTION_SCHEMA_VERSION
       if (cacheFresh && metaMap.has(entry.questionId)) continue
-      if (toFetch.length >= options.maxQuestionsPerSubject) break
+      if (reservedQuestionIds.has(entry.questionId)) {
+        toFetch.push(entry)
+        continue
+      }
+      if (!tryClaimQuestionSlot()) break
+      reservedQuestionIds.add(entry.questionId)
       toFetch.push(entry)
     }
 
     await runWithConcurrency(toFetch, QUESTION_CONCURRENCY, async (entry) => {
       try {
-        const questionHtml = await fetchHtml(entry.url)
-        const { meta, detail, images } = parseQuestionPage(questionHtml, entry.url, subject.id)
-        for (const image of images ?? []) {
-          const imagePath = path.join(imagesDir, image.filename)
-          if (!(await fileExists(imagePath))) {
-            await writeFile(imagePath, Buffer.from(image.base64, 'base64'))
-          }
-        }
-        await writeJsonAtomic(path.join(questionsDir, `${entry.questionId}.json`), { ...detail, meta, schemaVersion: QUESTION_SCHEMA_VERSION })
-        metaMap.set(entry.questionId, meta)
-        addedQuestionCount += 1
+        await ensureQuestionCached(entry)
       } catch (error) {
         console.warn(`Skipping question ${entry.questionId}: ${error instanceof Error ? error.message : String(error)}`)
       }
@@ -390,12 +503,16 @@ function serialiseManifestWrite(fn) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2))
+  allowedSourceOrigin = new URL(options.seedUrl).origin
   await mkdir(SUBJECT_DIR, { recursive: true })
 
   let subjects
   if (/syllabus_sections\.html$/.test(options.seedUrl)) {
     const folderMatch = options.seedUrl.match(/\/(\d+-[A-Za-z0-9-]+)\/syllabus_sections\.html$/)
-    const id = folderMatch?.[1] ?? 'unknown-subject'
+    const id = folderMatch?.[1]
+    if (!id) {
+      throw new Error(`Could not derive subject id from ${options.seedUrl}`)
+    }
     subjects = [{ id, name: id, url: options.seedUrl }]
   } else {
     const seedHtml = await fetchHtml(options.seedUrl)
@@ -405,13 +522,18 @@ async function main() {
     }
   }
 
+  for (const subject of subjects) {
+    assertSafeId(subject.id, 'subject id')
+    subject.url = assertAllowedSourceUrl(subject.url)
+  }
+
   if (options.subjects) {
     subjects = subjects.filter((subject) => options.subjects.includes(subject.id))
   }
 
   console.log(`Ingesting ${subjects.length} subjects: ${subjects.map((s) => s.id).join(', ')}`)
 
-  const existingManifest = await readJson(path.join(OUT_DIR, 'manifest.json'))
+  const existingManifest = await readJson(resolveInside(OUT_DIR, 'manifest.json'))
   const manifestSubjects = existingManifest?.subjects ? [...existingManifest.subjects] : []
 
   const writeManifest = () =>
@@ -421,7 +543,7 @@ async function main() {
         generatedAt: new Date().toISOString(),
         subjects: manifestSubjects,
       }
-      await writeJsonAtomic(path.join(OUT_DIR, 'manifest.json'), manifest, { pretty: true })
+      await writeJsonAtomic(resolveInside(OUT_DIR, 'manifest.json'), manifest, { pretty: true })
     })
 
   await runWithConcurrency(subjects, SUBJECT_CONCURRENCY, async (subject) => {
@@ -434,9 +556,9 @@ async function main() {
     }
     const { index, sectionFetchFailures } = result
     const bundleHash = hashJson(index)
-    const subjectDir = path.join(SUBJECT_DIR, subject.id)
+    const subjectDir = resolveSubjectPath(subject.id)
     const hashedFilename = `index-${bundleHash}.json`
-    const hashedPath = path.join(subjectDir, hashedFilename)
+    const hashedPath = resolveInside(subjectDir, hashedFilename)
     if (!(await fileExists(hashedPath))) {
       await writeJsonAtomic(hashedPath, index)
     }

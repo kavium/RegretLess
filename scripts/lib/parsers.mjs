@@ -15,14 +15,22 @@ const MIME_EXT = {
   'image/bmp': 'bmp',
 }
 
+const DATA_URI_PATTERN = /^data:([a-zA-Z0-9.+/-]+);base64,([A-Za-z0-9+/=\s]+)$/
+
 export function extractInlineImages(html) {
   if (!html) return { html: '', images: [] }
   const images = []
   const seen = new Set()
+  const $ = cheerio.load(`<div id="__root__">${html}</div>`, null, false)
 
-  const next = html.replace(
-    /(["'])data:([a-zA-Z0-9.+/-]+);base64,([A-Za-z0-9+/=\s]+?)\1/g,
-    (_match, quote, mime, data) => {
+  $('#__root__ *').each((_, element) => {
+    if (!element.attribs) return
+
+    for (const [attr, rawValue] of Object.entries(element.attribs)) {
+      const match = DATA_URI_PATTERN.exec(rawValue)
+      if (!match) continue
+
+      const [, mime, data] = match
       const cleanedData = data.replace(/\s+/g, '')
       const ext = MIME_EXT[mime.toLowerCase()] ?? 'bin'
       const hash = createHash('sha1').update(`${ext}:${cleanedData}`).digest('hex')
@@ -31,11 +39,11 @@ export function extractInlineImages(html) {
         seen.add(hash)
         images.push({ filename, base64: cleanedData })
       }
-      return `${quote}__IMG__/${filename}${quote}`
-    },
-  )
+      $(element).attr(attr, `__IMG__/${filename}`)
+    }
+  })
 
-  return { html: next, images }
+  return { html: $('#__root__').html() ?? '', images }
 }
 
 export function normalizeLevel(value) {
@@ -108,28 +116,6 @@ export function parseSubjectLinksFromHtml(html, pageUrl) {
   })
 
   return subjectLinks
-}
-
-export function parseSubjectPage(html, pageUrl) {
-  const $ = cheerio.load(html)
-  const syllabusHref = $('a[href="syllabus_sections.html"]').attr('href')
-
-  if (syllabusHref) {
-    return {
-      syllabusUrl: new URL(syllabusHref, pageUrl).toString(),
-    }
-  }
-
-  const refreshContent = $('meta[http-equiv="refresh"]').attr('content') ?? ''
-  const refreshTarget = refreshContent.match(/url=(.+)$/i)?.[1]?.trim()
-
-  if (refreshTarget) {
-    return {
-      syllabusUrl: new URL(refreshTarget, pageUrl).toString(),
-    }
-  }
-
-  throw new Error(`No syllabus link found in ${pageUrl}`)
 }
 
 export function parseSyllabusPage(html, pageUrl) {
