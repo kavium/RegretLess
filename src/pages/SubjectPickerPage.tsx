@@ -9,13 +9,12 @@ const TINTS = ['rose', 'butter', 'sage', 'sky'] as const
 const COUNTDOWN_TARGET = new Date(2026, 3, 28, 9, 0, 0).getTime()
 
 function getTimeLeft() {
-  const diff = COUNTDOWN_TARGET - Date.now()
-  if (diff <= 0) return { d: 0, h: 0, m: 0, s: 0, over: true }
+  const diff = Math.max(0, COUNTDOWN_TARGET - Date.now())
   const d = Math.floor(diff / 86400000)
   const h = Math.floor((diff % 86400000) / 3600000)
   const m = Math.floor((diff % 3600000) / 60000)
   const s = Math.floor((diff % 60000) / 1000)
-  return { d, h, m, s, over: false }
+  return { d, h, m, s, over: diff === 0 }
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -27,8 +26,6 @@ function CountdownCard() {
     const id = window.setInterval(() => setT(getTimeLeft()), 1000)
     return () => window.clearInterval(id)
   }, [t.over])
-
-  if (t.over) return null
 
   return (
     <div className="picker__hero-card">
