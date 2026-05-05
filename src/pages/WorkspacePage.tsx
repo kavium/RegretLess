@@ -37,12 +37,19 @@ function VirtualQuestionList({ questionIds, renderRow }: VirtualQuestionListProp
     const update = () => {
       if (parentRef.current) {
         const rect = parentRef.current.getBoundingClientRect()
-        setParentOffset(rect.top + window.scrollY)
+        const next = rect.top + window.scrollY
+        setParentOffset((cur) => (Math.abs(cur - next) < 0.5 ? cur : next))
       }
     }
     update()
     window.addEventListener('resize', update)
-    return () => window.removeEventListener('resize', update)
+    const ro = new ResizeObserver(update)
+    if (parentRef.current?.parentElement) ro.observe(parentRef.current.parentElement)
+    if (document.body) ro.observe(document.body)
+    return () => {
+      window.removeEventListener('resize', update)
+      ro.disconnect()
+    }
   }, [])
 
   const virtualizer = useWindowVirtualizer({
@@ -50,6 +57,7 @@ function VirtualQuestionList({ questionIds, renderRow }: VirtualQuestionListProp
     estimateSize: () => 140,
     overscan: 5,
     scrollMargin: parentOffset,
+    getItemKey: (index) => questionIds[index] ?? index,
   })
 
   if (!questionIds.length) {
@@ -73,6 +81,7 @@ function VirtualQuestionList({ questionIds, renderRow }: VirtualQuestionListProp
               left: 0,
               right: 0,
               transform: `translateY(${vi.start - virtualizer.options.scrollMargin}px)`,
+              paddingBottom: 14,
               contain: 'layout paint',
             }}
           >
