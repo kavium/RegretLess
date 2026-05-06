@@ -12,9 +12,12 @@ concurrency:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    # Job timeout has a small buffer over the scraper step so the publish
+    # + restart steps can still run after the scraper hits its own limit.
+    timeout-minutes: 350
     permissions:
       contents: write
+      actions: write
     steps:
       - name: Checkout main
         uses: actions/checkout@v5
@@ -45,18 +48,53 @@ jobs:
           fi
 
       - name: Run scraper
+        id: scrape
+        timeout-minutes: 330
         run: node --max-old-space-size=8192 scripts/ingest-questionbank.mjs
 
       - name: Publish to data branch
+        if: always() && steps.scrape.conclusion != 'cancelled'
+        id: publish
         run: |
           set -euo pipefail
           cd public/data
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Track consecutive partial runs so we cap auto-restart attempts.
+          counter_file=.scrape-restart-count
+          prev=0
+          if [ -f "$counter_file" ]; then
+            prev=$(cat "$counter_file" || echo 0)
+          fi
+          if [ "${{ steps.scrape.outcome }}" = "success" ]; then
+            echo 0 > "$counter_file"
+            msg="scrape $(date -u +%FT%TZ)"
+          else
+            echo $((prev + 1)) > "$counter_file"
+            msg="scrape partial $(date -u +%FT%TZ) (attempt $((prev + 1)))"
+            echo "restart_count=$((prev + 1))" >> "$GITHUB_OUTPUT"
+          fi
+
           git add -A
           if git diff --cached --quiet; then
             echo "no changes"
             exit 0
           fi
-          git commit -q -m "scrape $(date -u +%FT%TZ)"
+          git commit -q -m "$msg"
           git push origin HEAD:data
+
+      - name: Auto-restart on partial completion
+        if: always() && steps.scrape.outcome != 'success' && steps.scrape.conclusion != 'cancelled'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          count="${{ steps.publish.outputs.restart_count }}"
+          count="${count:-0}"
+          if [ "$count" -ge 5 ]; then
+            echo "restart cap reached ($count); not re-triggering"
+            exit 1
+          fi
+          echo "scraper did not finish (attempt $count); dispatching another run"
+          gh workflow run scrape.yml --repo "$GITHUB_REPOSITORY"
