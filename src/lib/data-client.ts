@@ -40,7 +40,7 @@ interface CachedQuestionDetail {
 
 // Bump this when the cached payload shape OR the __IMG__ rewrite base changes,
 // otherwise stale entries continue serving old image origins / pre-A2 truncated HTML.
-const CACHE_SCHEMA_VERSION = 3
+const CACHE_SCHEMA_VERSION = 4
 const RAW_GITHUB_DATA_BASE_URL = 'https://raw.githubusercontent.com/kavium/RegretLess/data'
 
 let cacheSweepPromise: Promise<void> | null = null
@@ -75,11 +75,12 @@ function parseDataBaseUrl(rawUrl: string) {
   return url
 }
 
-function getDataBaseUrls() {
+function getDataBaseUrls({ preferRaw = false } = {}) {
   const primary = DATA_BASE_URL
     ? parseDataBaseUrl(DATA_BASE_URL)
     : new URL(import.meta.env.BASE_URL, window.location.origin)
-  const candidates = [primary, parseDataBaseUrl(RAW_GITHUB_DATA_BASE_URL)]
+  const raw = parseDataBaseUrl(RAW_GITHUB_DATA_BASE_URL)
+  const candidates = preferRaw ? [raw, primary] : [primary, raw]
   const seen = new Set<string>()
 
   return candidates.filter((url) => {
@@ -134,11 +135,12 @@ async function fetchJsonValidated<T>(
   assetPath: string,
   schema: z.ZodType<T>,
   signal?: AbortSignal,
+  options: { preferRaw?: boolean } = {},
 ): Promise<FetchedJson<T>> {
   let firstError: unknown = null
   let firstSchemaIssues: z.core.$ZodIssue[] | null = null
 
-  for (const dataBaseUrl of getDataBaseUrls()) {
+  for (const dataBaseUrl of getDataBaseUrls(options)) {
     try {
       const response = await fetch(resolveAssetUrl(assetPath, dataBaseUrl), {
         cache: 'no-store',
@@ -175,6 +177,7 @@ export async function loadPublishedManifest(signal?: AbortSignal): Promise<Subje
       `/data/manifest.json?t=${Date.now()}`,
       SubjectManifestSchema,
       signal,
+      { preferRaw: true },
     )
     await setCacheItem<CachedManifestRecord>('manifest', { schemaVersion: CACHE_SCHEMA_VERSION, data: manifest })
     return manifest
@@ -190,6 +193,7 @@ export async function loadPublishedManifestVersion(signal?: AbortSignal) {
     `/data/manifest.json?t=${Date.now()}`,
     z.object({ version: z.string() }),
     signal,
+    { preferRaw: true },
   )
   return data.version
 }
@@ -269,6 +273,8 @@ export async function refreshPublishedData(currentManifest: SubjectManifest | nu
   const { data: manifest } = await fetchJsonValidated(
     `/data/manifest.json?t=${Date.now()}`,
     SubjectManifestSchema,
+    undefined,
+    { preferRaw: true },
   )
 
   const changedSubjectIds = manifest.subjects
