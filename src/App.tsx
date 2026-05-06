@@ -5,6 +5,7 @@ import { SubjectPickerPage } from './pages/SubjectPickerPage'
 import { StudySetupPage } from './pages/StudySetupPage'
 import { WorkspacePage } from './pages/WorkspacePage'
 import { ResumeModal } from './components/ResumeModal'
+import { UpdateBanner } from './components/UpdateBanner'
 import { clearResumeState, getResumeState } from './lib/storage'
 import { ensureMathJax } from './lib/mathjax'
 
@@ -51,6 +52,8 @@ function AppFrame() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+
+      <UpdateBanner />
 
       {shouldOfferResume && safeSnapshot ? (
         <ResumeModal

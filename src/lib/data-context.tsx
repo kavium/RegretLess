@@ -10,7 +10,10 @@ interface DataContextValue {
   error: string | null
   loadSubjectBundle: (subjectId: string, signal?: AbortSignal) => Promise<SubjectBundle>
   refreshPublishedData: () => Promise<{ changedSubjectIds: string[]; scraped: boolean }>
+  updateAvailable: boolean
 }
+
+const VERSION_POLL_INTERVAL_MS = 10 * 60 * 1000
 
 const DataContext = createContext<DataContextValue | null>(null)
 
@@ -18,6 +21,8 @@ export function DataProvider({ children }: PropsWithChildren) {
   const [manifest, setManifest] = useState<SubjectManifest | null>(null)
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+  const bootVersionRef = useRef<string | null>(null)
   const inflightBundles = useRef(new Map<string, Promise<SubjectBundle>>())
 
   useEffect(() => {
@@ -33,6 +38,9 @@ export function DataProvider({ children }: PropsWithChildren) {
         if (!controller.signal.aborted) {
           setManifest(nextManifest)
           setStatus('ready')
+          if (!bootVersionRef.current) {
+            bootVersionRef.current = nextManifest.version
+          }
         }
       } catch (nextError) {
         if (!controller.signal.aborted) {
@@ -48,6 +56,43 @@ export function DataProvider({ children }: PropsWithChildren) {
       controller.abort()
     }
   }, [])
+
+  // Poll the published manifest periodically. If its `version` changes
+  // (a new deploy was published), surface a banner so users running an
+  // old tab can reload without us forcing it.
+  useEffect(() => {
+    if (status !== 'ready' || updateAvailable) return
+
+    let cancelled = false
+
+    const checkVersion = async () => {
+      if (cancelled || document.hidden) return
+      try {
+        const response = await fetch(`/data/manifest.json?t=${Date.now()}`, { cache: 'no-store' })
+        if (!response.ok) return
+        const json = (await response.json()) as { version?: unknown }
+        if (cancelled) return
+        const remoteVersion = typeof json.version === 'string' ? json.version : null
+        if (remoteVersion && bootVersionRef.current && remoteVersion !== bootVersionRef.current) {
+          setUpdateAvailable(true)
+        }
+      } catch {
+        // best-effort; ignore network blips
+      }
+    }
+
+    const interval = window.setInterval(checkVersion, VERSION_POLL_INTERVAL_MS)
+    const onVisibility = () => {
+      if (!document.hidden) void checkVersion()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [status, updateAvailable])
 
   const loadSubjectBundle = useCallback(
     async (subjectId: string, signal?: AbortSignal) => {
@@ -99,8 +144,9 @@ export function DataProvider({ children }: PropsWithChildren) {
       error,
       loadSubjectBundle,
       refreshPublishedData,
+      updateAvailable,
     }),
-    [error, loadSubjectBundle, manifest, refreshPublishedData, status],
+    [error, loadSubjectBundle, manifest, refreshPublishedData, status, updateAvailable],
   )
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>

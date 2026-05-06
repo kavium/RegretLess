@@ -2,6 +2,7 @@ import { openDB, type IDBPDatabase } from 'idb'
 
 const DB_NAME = 'qol-ib-qb'
 const STORE_NAME = 'kv'
+const SCHEMA_MARKER_KEY = '__schemaVersion'
 
 let dbPromise: Promise<IDBPDatabase> | null = null
 
@@ -55,6 +56,28 @@ export async function getCacheItem<T>(key: string): Promise<T | undefined> {
     }
     return undefined
   }
+}
+
+// Wipe every cached entry. Used on schema bumps to evict records the new
+// client code would just ignore anyway, instead of letting them sit forever.
+export async function clearAllCache() {
+  try {
+    const db = await getDb()
+    await db.clear(STORE_NAME)
+  } catch {
+    /* best-effort */
+  }
+}
+
+// Read the marker that records which schema version last touched this DB.
+// Returns null if the DB is fresh or unreachable.
+export async function getStoredSchemaVersion(): Promise<number | null> {
+  const value = await getCacheItem<number>(SCHEMA_MARKER_KEY)
+  return typeof value === 'number' ? value : null
+}
+
+export async function setStoredSchemaVersion(version: number) {
+  await setCacheItem<number>(SCHEMA_MARKER_KEY, version)
 }
 
 export async function setCacheItem<T>(key: string, value: T) {

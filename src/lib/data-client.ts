@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { getCacheItem, setCacheItem } from './cache'
+import { clearAllCache, getCacheItem, getStoredSchemaVersion, setCacheItem, setStoredSchemaVersion } from './cache'
 import { QuestionDetailSchema, QuestionIdSchema, SubjectBundleSchema, SubjectIdSchema, SubjectManifestSchema } from './schemas'
 import type { QuestionDetail, SubjectBundle, SubjectManifest } from '../types'
 
@@ -41,6 +41,27 @@ interface CachedQuestionDetail {
 // Bump this when the cached payload shape OR the __IMG__ rewrite base changes,
 // otherwise stale entries continue serving old image origins / pre-A2 truncated HTML.
 const CACHE_SCHEMA_VERSION = 2
+
+let cacheSweepPromise: Promise<void> | null = null
+
+// Drop the entire IDB store the first time a client running a newer schema
+// boots up. Keeps the store from accumulating dead records across versions.
+async function ensureCacheSweep() {
+  if (!cacheSweepPromise) {
+    cacheSweepPromise = (async () => {
+      try {
+        const stored = await getStoredSchemaVersion()
+        if (stored !== CACHE_SCHEMA_VERSION) {
+          await clearAllCache()
+          await setStoredSchemaVersion(CACHE_SCHEMA_VERSION)
+        }
+      } catch {
+        /* best-effort */
+      }
+    })()
+  }
+  return cacheSweepPromise
+}
 const DATA_BASE_URL = typeof import.meta.env.VITE_DATA_BASE_URL === 'string'
   ? import.meta.env.VITE_DATA_BASE_URL.replace(/\/$/, '')
   : null
@@ -110,6 +131,7 @@ async function fetchJsonValidated<T>(assetPath: string, schema: z.ZodType<T>, si
 }
 
 export async function loadPublishedManifest(signal?: AbortSignal): Promise<SubjectManifest> {
+  await ensureCacheSweep()
   try {
     const manifest = await fetchJsonValidated(
       `/data/manifest.json?t=${Date.now()}`,
@@ -130,6 +152,7 @@ export async function loadPublishedSubjectBundle(
   subjectId: string,
   signal?: AbortSignal,
 ): Promise<SubjectBundle> {
+  await ensureCacheSweep()
   assertSubjectId(subjectId)
   const subject = manifest.subjects.find((entry) => entry.id === subjectId)
 
@@ -163,6 +186,7 @@ export async function loadQuestionDetail(
   bundleHash: string,
   signal?: AbortSignal,
 ): Promise<QuestionDetail> {
+  await ensureCacheSweep()
   assertSubjectId(subjectId)
   assertQuestionId(questionId)
 
