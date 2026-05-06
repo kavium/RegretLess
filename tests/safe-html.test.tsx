@@ -8,18 +8,27 @@ vi.mock('../src/lib/mathjax', () => ({
 import { SafeHtml } from '../src/components/SafeHtml'
 
 describe('SafeHtml', () => {
-  it('strips MathML markup instead of allowing active XML namespaces through', () => {
+  it('keeps MathML markup so equations render', () => {
     const { container } = render(
       <SafeHtml html='<math xmlns="http://www.w3.org/1998/Math/MathML"><mi>x</mi></math>' />,
     )
-    expect(container.querySelector('math')).toBeNull()
+    expect(container.querySelector('math')).not.toBeNull()
   })
 
-  it('strips SVG markup instead of permitting scriptable SVG content', () => {
+  it('keeps inline SVG diagrams', () => {
     const { container } = render(
       <SafeHtml html='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>' />,
     )
-    expect(container.querySelector('svg')).toBeNull()
+    expect(container.querySelector('svg')).not.toBeNull()
+    expect(container.querySelector('circle')).not.toBeNull()
+  })
+
+  it('still strips <script> inside SVG to block XSS', () => {
+    const { container } = render(
+      <SafeHtml html='<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><circle cx="5" cy="5" r="4"/></svg>' />,
+    )
+    expect(container.querySelector('script')).toBeNull()
+    expect(container.querySelector('circle')).not.toBeNull()
   })
 
   it('drops <script> tags and inline event handlers', () => {

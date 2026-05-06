@@ -38,7 +38,9 @@ interface CachedQuestionDetail {
   data: QuestionDetail
 }
 
-const CACHE_SCHEMA_VERSION = 1
+// Bump this when the cached payload shape OR the __IMG__ rewrite base changes,
+// otherwise stale entries continue serving old image origins / pre-A2 truncated HTML.
+const CACHE_SCHEMA_VERSION = 2
 const DATA_BASE_URL = typeof import.meta.env.VITE_DATA_BASE_URL === 'string'
   ? import.meta.env.VITE_DATA_BASE_URL.replace(/\/$/, '')
   : null
@@ -190,18 +192,9 @@ export async function loadQuestionDetail(
   return detail
 }
 
-async function triggerScrape(): Promise<{ ok: boolean; available: boolean }> {
-  try {
-    const response = await fetch('/api/refresh', { method: 'POST' })
-    return { ok: response.ok, available: response.status !== 404 && response.status !== 405 }
-  } catch {
-    return { ok: false, available: false }
-  }
-}
-
 export async function refreshPublishedData(currentManifest: SubjectManifest | null) {
-  const scrape = await triggerScrape()
-
+  // Re-fetch published manifest. Server-side re-scrape is run out-of-band by
+  // the ingest CLI; there is no /api/refresh endpoint to call here.
   const manifest = await fetchJsonValidated(
     `/data/manifest.json?t=${Date.now()}`,
     SubjectManifestSchema,
@@ -222,6 +215,6 @@ export async function refreshPublishedData(currentManifest: SubjectManifest | nu
   return {
     manifest,
     changedSubjectIds,
-    scraped: scrape.ok,
+    scraped: false,
   }
 }

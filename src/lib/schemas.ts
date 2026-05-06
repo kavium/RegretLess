@@ -13,7 +13,7 @@ const IsoDatetimeSchema = z.iso.datetime()
 export const SubjectIdSchema = SafePathIdSchema
 export const QuestionIdSchema = SafePathIdSchema
 
-export const PaperCodeSchema = z.enum(['1A', '1B', '1', '2', '3'])
+export const PaperCodeSchema = z.enum(['1A', '1B', '1', '2', '3', 'unknown'])
 export const LevelCodeSchema = z.enum(['SL', 'HL'])
 
 export const SubjectManifestEntrySchema = z.object({

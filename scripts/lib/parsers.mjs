@@ -13,32 +13,123 @@ const MIME_EXT = {
   'image/webp': 'webp',
   'image/svg+xml': 'svg',
   'image/bmp': 'bmp',
+  'image/avif': 'avif',
 }
 
+const KNOWN_IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif'])
 const DATA_URI_PATTERN = /^data:([a-zA-Z0-9.+/-]+);base64,([A-Za-z0-9+/=\s]+)$/
+const REMOTE_IMAGE_ATTRS = new Set(['src', 'href', 'xlink:href', 'poster'])
+const LAZY_SRC_ATTRS = ['data-src', 'data-original', 'data-lazy-src', 'data-srcset']
+const SKIP_SCHEME_PATTERN = /^(?:javascript|mailto|tel|about|blob):/i
 
-export function extractInlineImages(html) {
+function extFromUrl(rawUrl) {
+  const cleaned = String(rawUrl).split(/[?#]/)[0]
+  const m = cleaned.match(/\.([A-Za-z0-9]+)$/)
+  if (!m) return null
+  let ext = m[1].toLowerCase()
+  if (ext === 'jpeg') ext = 'jpg'
+  return KNOWN_IMAGE_EXTS.has(ext) ? ext : null
+}
+
+function resolveUrl(rawValue, baseUrl) {
+  try {
+    return baseUrl ? new URL(rawValue, baseUrl).toString() : new URL(rawValue).toString()
+  } catch {
+    return null
+  }
+}
+
+function pickFirstSrcsetUrl(srcset) {
+  const first = String(srcset).split(',')[0]?.trim().split(/\s+/)[0]
+  return first || null
+}
+
+export function extractInlineImages(html, baseUrl = null) {
   if (!html) return { html: '', images: [] }
   const images = []
   const seen = new Set()
-  const $ = cheerio.load(`<div id="__root__">${html}</div>`, null, false)
+  const $ = cheerio.load(`<div id="__root__">${html}</div>`)
+
+  // Pre-pass: promote lazy-load attrs to src so the next pass picks them up.
+  $('#__root__ *').each((_, element) => {
+    if (!element.attribs) return
+    for (const attr of LAZY_SRC_ATTRS) {
+      const value = element.attribs[attr]
+      if (!value) continue
+      if (attr === 'data-srcset') {
+        const first = pickFirstSrcsetUrl(value)
+        if (first && !element.attribs.src) $(element).attr('src', first)
+      } else if (!element.attribs.src) {
+        $(element).attr('src', value)
+      }
+      $(element).removeAttr(attr)
+    }
+  })
+
+  const recordImage = (image) => {
+    if (seen.has(image.filename)) return
+    seen.add(image.filename)
+    images.push(image)
+  }
 
   $('#__root__ *').each((_, element) => {
     if (!element.attribs) return
 
-    for (const [attr, rawValue] of Object.entries(element.attribs)) {
-      const match = DATA_URI_PATTERN.exec(rawValue)
-      if (!match) continue
-
-      const [, mime, data] = match
-      const cleanedData = data.replace(/\s+/g, '')
-      const ext = MIME_EXT[mime.toLowerCase()] ?? 'bin'
-      const hash = createHash('sha1').update(`${ext}:${cleanedData}`).digest('hex')
-      const filename = `${hash}.${ext}`
-      if (!seen.has(hash)) {
-        seen.add(hash)
-        images.push({ filename, base64: cleanedData })
+    // srcset on <img>/<source>: take first candidate, drop the rest so the
+    // browser doesn't try to fetch unresolved external candidates.
+    const srcsetValue = element.attribs.srcset
+    if (srcsetValue && (element.tagName === 'img' || element.tagName === 'source')) {
+      const first = pickFirstSrcsetUrl(srcsetValue)
+      if (first) {
+        const dataMatch = DATA_URI_PATTERN.exec(first)
+        if (!dataMatch) {
+          const resolved = resolveUrl(first, baseUrl)
+          const ext = resolved ? extFromUrl(resolved) : null
+          if (resolved && ext) {
+            const url = new URL(resolved)
+            if (url.protocol === 'http:' || url.protocol === 'https:') {
+              const hash = createHash('sha1').update(`url:${ext}:${resolved}`).digest('hex')
+              const filename = `${hash}.${ext}`
+              recordImage({ filename, sourceUrl: resolved })
+              if (!element.attribs.src) $(element).attr('src', `__IMG__/${filename}`)
+            }
+          }
+        }
       }
+      $(element).removeAttr('srcset')
+    }
+
+    for (const [attr, rawValue] of Object.entries(element.attribs)) {
+      if (!rawValue) continue
+
+      const dataMatch = DATA_URI_PATTERN.exec(rawValue)
+      if (dataMatch) {
+        const [, mime, data] = dataMatch
+        const cleanedData = data.replace(/\s+/g, '')
+        const ext = MIME_EXT[mime.toLowerCase()] ?? 'bin'
+        const hash = createHash('sha1').update(`${ext}:${cleanedData}`).digest('hex')
+        const filename = `${hash}.${ext}`
+        recordImage({ filename, base64: cleanedData })
+        $(element).attr(attr, `__IMG__/${filename}`)
+        continue
+      }
+
+      if (!REMOTE_IMAGE_ATTRS.has(attr)) continue
+      if (SKIP_SCHEME_PATTERN.test(rawValue)) continue
+      if (rawValue.startsWith('#')) continue
+      // Already rewritten by an earlier pass (idempotent).
+      if (rawValue.startsWith('__IMG__/')) continue
+
+      const resolved = resolveUrl(rawValue, baseUrl)
+      if (!resolved) continue
+      const url = new URL(resolved)
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') continue
+      const ext = extFromUrl(resolved)
+      if (!ext) continue
+
+      const hash = createHash('sha1').update(`url:${ext}:${resolved}`).digest('hex')
+      const filename = `${hash}.${ext}`
+      recordImage({ filename, sourceUrl: resolved })
       $(element).attr(attr, `__IMG__/${filename}`)
     }
   })
@@ -47,21 +138,26 @@ export function extractInlineImages(html) {
 }
 
 export function normalizeLevel(value) {
-  const upper = (value ?? '').toUpperCase()
+  const upper = (value ?? '').toString().toUpperCase()
   return upper === 'AHL' ? 'HL' : upper
 }
 
+export function normalizePaper(value) {
+  if (value === undefined || value === null) return null
+  const trimmed = String(value).trim().toUpperCase()
+  if (!trimmed) return null
+  const m = trimmed.match(/(?:PAPER\s*|P)?(1A|1B|1|2|3)\b/)
+  return m ? m[1] : null
+}
+
 export function extractMetadataFromReferenceCode(referenceCode) {
-  const match = referenceCode.match(/\.((?:1A|1B|1|2|3))\.(AHL|HL|SL|hl|sl|ahl)\./i)
+  const match = String(referenceCode ?? '').match(/\.((?:1A|1B|1|2|3))\.(AHL|HL|SL)\./i)
 
   if (!match) {
     if (referenceCode) {
-      console.warn(`[parsers] paper/level regex miss on referenceCode="${referenceCode}", falling back to paper=2 level=HL`)
+      console.warn(`[parsers] paper/level regex miss on referenceCode="${referenceCode}"`)
     }
-    return {
-      paper: '2',
-      level: 'HL',
-    }
+    return { paper: null, level: null }
   }
 
   return {
@@ -201,6 +297,37 @@ export function parseSectionPage(html, pageUrl) {
   return questions
 }
 
+function collectAllHtml($, selector) {
+  const parts = []
+  $(selector).each((_, el) => {
+    const html = $(el).html()?.trim()
+    if (html) parts.push(html)
+  })
+  return parts
+}
+
+function joinParts(parts, partClass) {
+  if (parts.length === 0) return ''
+  if (parts.length === 1) return parts[0]
+  return parts
+    .map((html, index) => `<div class="${partClass}" data-part="${index}">${html}</div>`)
+    .join('\n')
+}
+
+function smartTitleSlice(text, maxLength = 180) {
+  if (text.length <= maxLength) return text
+  // Avoid cutting inside a $...$ LaTeX expression: walk back to a space.
+  let cut = text.slice(0, maxLength)
+  const dollarCount = (cut.match(/\$/g) ?? []).length
+  if (dollarCount % 2 === 1) {
+    const lastDollar = cut.lastIndexOf('$')
+    if (lastDollar > 0) cut = cut.slice(0, lastDollar).trimEnd()
+  }
+  const lastSpace = cut.lastIndexOf(' ')
+  if (lastSpace > maxLength - 40) cut = cut.slice(0, lastSpace)
+  return `${cut.trimEnd()}…`
+}
+
 export function parseQuestionPage(html, pageUrl, subjectId) {
   const $ = cheerio.load(html)
   const metadata = {}
@@ -208,7 +335,7 @@ export function parseQuestionPage(html, pageUrl, subjectId) {
   $('table.meta_info tr').each((_, row) => {
     const cells = $(row).find('td').toArray()
 
-    for (let index = 0; index < cells.length; index += 2) {
+    for (let index = 0; index + 1 < cells.length; index += 2) {
       const label = textContent($(cells[index]).text())
       const value = textContent($(cells[index + 1]).text())
 
@@ -230,6 +357,7 @@ export function parseQuestionPage(html, pageUrl, subjectId) {
   })
 
   const questionId = pageUrl.split('/').pop().replace(/\.html$/, '')
+
   const parentStems = []
   $('.t_qnt_container_full .q_resource').each((_, el) => {
     const stemHtml = $(el).html()?.trim()
@@ -237,16 +365,33 @@ export function parseQuestionPage(html, pageUrl, subjectId) {
       parentStems.push(`<div class="qb-parent-stem">${stemHtml}</div>`)
     }
   })
-  const leafBodyHtml = $('.t_qn_question_content .qc_body').first().html()?.trim() ?? $('.qc_body').first().html()?.trim() ?? ''
+
+  // A2: collect EVERY .qc_body, not just the first — multi-part questions
+  // (e.g. Math AA a/b/c) live in sibling .qc_body divs.
+  let leafBodyParts = collectAllHtml($, '.t_qn_question_content .qc_body')
+  if (leafBodyParts.length === 0) {
+    leafBodyParts = collectAllHtml($, '.qc_body')
+  }
+  const leafBodyHtml = joinParts(leafBodyParts, 'qb-leaf-part')
   const rawQuestionHtml = parentStems.length
     ? `${parentStems.join('\n')}\n<div class="qb-leaf-prompt">${leafBodyHtml}</div>`
     : leafBodyHtml
-  const rawMarkschemeHtml = $('.qc_markscheme .card-body').first().html()?.trim() ?? ''
-  const q = extractInlineImages(rawQuestionHtml)
-  const m = extractInlineImages(rawMarkschemeHtml)
+
+  // A2: same for mark scheme — collect every .card-body inside .qc_markscheme.
+  const msParts = collectAllHtml($, '.qc_markscheme .card-body')
+  const rawMarkschemeHtml = joinParts(msParts, 'qb-ms-part')
+
+  const q = extractInlineImages(rawQuestionHtml, pageUrl)
+  const m = extractInlineImages(rawMarkschemeHtml, pageUrl)
   const images = [...q.images, ...m.images]
   const questionHtml = q.html
   const markschemeHtml = m.html
+
+  // A3+A4: prefer table value, then reference-code regex, then 'unknown'.
+  // Never silently default to '2'.
+  const paperFromTable = normalizePaper(metadata.Paper)
+  const resolvedPaper = paperFromTable ?? fallback.paper ?? 'unknown'
+  const resolvedLevel = normalizeLevel(metadata.Level || fallback.level || '') || 'HL'
 
   return {
     images,
@@ -254,9 +399,9 @@ export function parseQuestionPage(html, pageUrl, subjectId) {
       questionId,
       referenceCode,
       subjectId,
-      title: textContent($('.qc_body').text()).slice(0, 180),
-      paper: metadata.Paper || fallback.paper,
-      level: normalizeLevel(metadata.Level || fallback.level),
+      title: smartTitleSlice(textContent($('.qc_body').text()), 180),
+      paper: resolvedPaper,
+      level: resolvedLevel,
       questionNumber: metadata['Question number'] || '',
       marksAvailable: metadata['Marks available'] || textContent($('.qn_maximum_mark').text()),
       breadcrumbLabels,

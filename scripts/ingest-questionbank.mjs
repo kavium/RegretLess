@@ -135,6 +135,44 @@ async function fetchHtml(url, retries = 10) {
   throw new Error(`Failed to fetch ${safeUrl}`)
 }
 
+async function fetchImageBytes(rawUrl, retries = 3) {
+  const url = new URL(rawUrl)
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error(`disallowed scheme: ${url.protocol}`)
+  }
+  if (url.username || url.password) {
+    throw new Error(`credentials in image url: ${rawUrl}`)
+  }
+
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+    try {
+      const response = await fetch(url.toString(), {
+        headers: { 'user-agent': 'Mozilla/5.0', accept: 'image/*,*/*;q=0.8' },
+        signal: controller.signal,
+      })
+      if (response.ok) {
+        const buffer = Buffer.from(await response.arrayBuffer())
+        if (buffer.length === 0) {
+          throw new Error('empty image body')
+        }
+        return buffer
+      }
+      if (attempt === retries) {
+        throw new Error(`image fetch ${response.status} for ${rawUrl}`)
+      }
+    } catch (error) {
+      if (attempt === retries) throw error
+    } finally {
+      clearTimeout(timeoutId)
+    }
+    const backoff = Math.min(15000, 1500 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 500)
+    await new Promise((resolve) => setTimeout(resolve, backoff))
+  }
+  throw new Error(`image fetch exhausted retries: ${rawUrl}`)
+}
+
 async function readJson(filePath) {
   try {
     const content = await readFile(filePath, 'utf8')
@@ -184,7 +222,7 @@ function paperCoverageFor(questions) {
   for (const q of questions) {
     if (q?.paper) seen.add(q.paper)
   }
-  const order = ['1A', '1B', '1', '2', '3']
+  const order = ['1A', '1B', '1', '2', '3', 'unknown']
   return order.filter((p) => seen.has(p))
 }
 
@@ -339,8 +377,18 @@ async function ingestSubject(subject, options) {
 
       for (const image of images ?? []) {
         const imagePath = resolveInside(imagesDir, image.filename)
-        if (!(await fileExists(imagePath))) {
-          await writeFile(imagePath, Buffer.from(image.base64, 'base64'))
+        if (await fileExists(imagePath)) continue
+        try {
+          if (image.base64) {
+            await writeFile(imagePath, Buffer.from(image.base64, 'base64'))
+          } else if (image.sourceUrl) {
+            const bytes = await fetchImageBytes(image.sourceUrl)
+            await writeFile(imagePath, bytes)
+          }
+        } catch (error) {
+          console.warn(
+            `[${subject.id}] image fetch failed (${image.filename}): ${error instanceof Error ? error.message : String(error)}`,
+          )
         }
       }
 
@@ -586,6 +634,9 @@ async function main() {
     else manifestSubjects.push(summary)
     await writeManifest()
   })
+
+  // A7: ensure queued manifest writes flush before main() resolves.
+  await manifestWriteChain
 }
 
 main().catch((error) => {

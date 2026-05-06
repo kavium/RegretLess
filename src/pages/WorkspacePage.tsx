@@ -54,7 +54,9 @@ function VirtualQuestionList({ questionIds, renderRow }: VirtualQuestionListProp
 
   const virtualizer = useWindowVirtualizer({
     count: questionIds.length,
-    estimateSize: () => 140,
+    // Higher initial estimate so long math-AA / econ-P3 questions don't clip
+    // before ResizeObserver re-measures. Real height replaces this on first paint.
+    estimateSize: () => 320,
     overscan: 5,
     scrollMargin: parentOffset,
     getItemKey: (index) => questionIds[index] ?? index,
@@ -82,7 +84,9 @@ function VirtualQuestionList({ questionIds, renderRow }: VirtualQuestionListProp
               right: 0,
               transform: `translateY(${vi.start - virtualizer.options.scrollMargin}px)`,
               paddingBottom: 14,
-              contain: 'layout paint',
+              // Removed `contain: 'layout paint'`: it blocked async size growth
+              // (e.g. MathJax typesetting) from propagating to the virtualizer's
+              // ResizeObserver, causing Math AA rows to clip on filter change.
             }}
           >
             {renderRow(questionId)}
@@ -361,7 +365,7 @@ export function WorkspacePage() {
               className={`ws__chip${filters.paperFilters.includes(paper) ? ' is-active' : ''}`}
               onClick={() => updateFilters({ ...filters, paperFilters: toggleValue(filters.paperFilters, paper as PaperCode, availablePapers) })}
             >
-              {paper === '2' ? 'Paper 2' : `Paper ${paper}`}
+              {paper === 'unknown' ? 'Uncategorized' : paper === '2' ? 'Paper 2' : `Paper ${paper}`}
             </button>
           ))}
         </div>

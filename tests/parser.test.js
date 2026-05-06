@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { extractMetadataFromReferenceCode, parseQuestionPage, parseSyllabusPage } from '../scripts/lib/parsers.mjs'
+import { extractInlineImages, extractMetadataFromReferenceCode, normalizePaper, parseQuestionPage, parseSyllabusPage } from '../scripts/lib/parsers.mjs'
 
 describe('source parsers', () => {
   it('extracts paper and level from reference code fallback', () => {
@@ -9,10 +9,10 @@ describe('source parsers', () => {
     })
   })
 
-  it('warns when reference code does not match the regex', () => {
+  it('warns and returns null fallback when reference code does not match the regex', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const result = extractMetadataFromReferenceCode('GARBAGE-CODE')
-    expect(result).toEqual({ paper: '2', level: 'HL' })
+    expect(result).toEqual({ paper: null, level: null })
     expect(warn).toHaveBeenCalledOnce()
     warn.mockRestore()
   })
@@ -122,6 +122,98 @@ describe('source parsers', () => {
     expect(html.indexOf('OUTER')).toBeLessThan(html.indexOf('MIDDLE'))
     expect(html.indexOf('MIDDLE')).toBeLessThan(html.indexOf('INNER'))
     expect(html.indexOf('INNER')).toBeLessThan(html.indexOf('LEAF'))
+  })
+
+  it('extracts non-base64 <img src> URLs as remote refs', () => {
+    const { html, images } = extractInlineImages(
+      '<p>see <img src="../images/structure.png" alt="x"></p>',
+      'https://example.com/question_node_trees/q1.html',
+    )
+    expect(images).toHaveLength(1)
+    expect(images[0].sourceUrl).toBe('https://example.com/images/structure.png')
+    expect(images[0].filename).toMatch(/^[a-f0-9]{40}\.png$/)
+    expect(html).toContain(`__IMG__/${images[0].filename}`)
+    expect(html).not.toContain('../images/structure.png')
+  })
+
+  it('promotes data-src lazy-load attrs to src before extracting', () => {
+    const { html, images } = extractInlineImages(
+      '<img data-src="/files/spectrum.svg" src="placeholder.gif">',
+      'https://example.com/q/1.html',
+    )
+    expect(images.length).toBeGreaterThan(0)
+    expect(html).not.toContain('data-src')
+  })
+
+  it('joins multiple .qc_body sub-parts in document order', () => {
+    const result = parseQuestionPage(
+      `
+      <div class="t_qn_question_content">
+        <div class="qc_body"><p>PART A</p></div>
+        <div class="qc_body"><p>PART B</p></div>
+        <div class="qc_body"><p>PART C</p></div>
+      </div>
+      `,
+      'https://example.com/question_node_trees/multi.html',
+      'math',
+    )
+    const html = result.detail.questionHtml
+    expect(html).toContain('PART A')
+    expect(html).toContain('PART B')
+    expect(html).toContain('PART C')
+    expect(html.indexOf('PART A')).toBeLessThan(html.indexOf('PART B'))
+    expect(html.indexOf('PART B')).toBeLessThan(html.indexOf('PART C'))
+  })
+
+  it('joins multiple mark-scheme card-bodies', () => {
+    const result = parseQuestionPage(
+      `
+      <div class="qc_body"><p>Q</p></div>
+      <div class="qc_markscheme">
+        <div class="card-body"><p>MS-A</p></div>
+        <div class="card-body"><p>MS-B</p></div>
+      </div>
+      `,
+      'https://example.com/question_node_trees/ms.html',
+      'physics',
+    )
+    expect(result.detail.markschemeHtml).toContain('MS-A')
+    expect(result.detail.markschemeHtml).toContain('MS-B')
+  })
+
+  it('does not silently default paper to "2" when reference code and metadata are absent', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const result = parseQuestionPage(
+      `<div class="qc_body"><p>orphan</p></div>`,
+      'https://example.com/question_node_trees/orphan.html',
+      'econ',
+    )
+    expect(result.meta.paper).toBe('unknown')
+    warn.mockRestore()
+  })
+
+  it('normalizes free-form Paper metadata strings', () => {
+    expect(normalizePaper('Paper 3')).toBe('3')
+    expect(normalizePaper('P3')).toBe('3')
+    expect(normalizePaper(' 1A ')).toBe('1A')
+    expect(normalizePaper('')).toBe(null)
+    expect(normalizePaper(null)).toBe(null)
+  })
+
+  it('survives metadata rows with odd cell counts', () => {
+    const result = parseQuestionPage(
+      `
+      <table class="meta_info">
+        <tr><td class="info_label">Reference code</td><td>EXE.3.HL.TZ0.1</td><td class="dangling">x</td></tr>
+        <tr><td class="info_label">Paper</td><td>3</td></tr>
+      </table>
+      <div class="qc_body"><p>q</p></div>
+      `,
+      'https://example.com/question_node_trees/odd.html',
+      'econ',
+    )
+    expect(result.meta.paper).toBe('3')
+    expect(result.meta.referenceCode).toBe('EXE.3.HL.TZ0.1')
   })
 
   it('leaves questionHtml unchanged for standalone questions without parent stem', () => {
