@@ -13,7 +13,7 @@ const CACHE_CHECK_CONCURRENCY = 8
 const FETCH_TIMEOUT_MS = 120000
 const HASHED_BUNDLES_TO_KEEP = 2
 // Bump when parseQuestionPage output shape changes so cached q/<id>.json files are re-fetched.
-const QUESTION_SCHEMA_VERSION = 2
+const QUESTION_SCHEMA_VERSION = 3
 const SAFE_ID_PATTERN = /^(?!__proto__$)(?!constructor$)(?!prototype$)[A-Za-z0-9_-]+$/
 
 setGlobalDispatcher(
