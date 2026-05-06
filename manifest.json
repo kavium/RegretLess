@@ -1,0 +1,125 @@
+{
+  "version": "2026-05-06T09:16:34.387Z",
+  "generatedAt": "2026-05-06T09:16:34.387Z",
+  "subjects": [
+    {
+      "id": "46-dp-physics-last-assessment-2024",
+      "name": "DP Physics Last Assessment (2024)",
+      "bundleUrl": "/data/subjects/46-dp-physics-last-assessment-2024/index-6c27e473772015c83e29da2dfea601468729f4cc.json",
+      "bundleHash": "6c27e473772015c83e29da2dfea601468729f4cc",
+      "questionCount": 6204,
+      "nodeCount": 81,
+      "paperCoverage": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    {
+      "id": "43-dp-biology-last-assessment-2024",
+      "name": "DP Biology Last Assessment (2024)",
+      "bundleUrl": "/data/subjects/43-dp-biology-last-assessment-2024/index-013884905679ceb98b2f8f1a022100c68cdeb85c.json",
+      "bundleHash": "013884905679ceb98b2f8f1a022100c68cdeb85c",
+      "questionCount": 6603,
+      "nodeCount": 99,
+      "paperCoverage": [
+        "1",
+        "2",
+        "3",
+        "unknown"
+      ]
+    },
+    {
+      "id": "45-dp-chemistry-last-assessment-2024",
+      "name": "DP Chemistry Last Assessment (2024)",
+      "bundleUrl": "/data/subjects/45-dp-chemistry-last-assessment-2024/index-254fde1961827ce8d12751015338c3aa8782ca1a.json",
+      "bundleHash": "254fde1961827ce8d12751015338c3aa8782ca1a",
+      "questionCount": 7943,
+      "nodeCount": 113,
+      "paperCoverage": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    {
+      "id": "50-dp-mathematics-analysis-and-approaches",
+      "name": "DP Mathematics Analysis And Approaches",
+      "bundleUrl": "/data/subjects/50-dp-mathematics-analysis-and-approaches/index-641b47ffb007c39b56f3cc7b3ac4cdee543222fe.json",
+      "bundleHash": "641b47ffb007c39b56f3cc7b3ac4cdee543222fe",
+      "questionCount": 3090,
+      "nodeCount": 89,
+      "paperCoverage": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    {
+      "id": "48-dp-economics",
+      "name": "DP Economics",
+      "bundleUrl": "/data/subjects/48-dp-economics/index-0ab599b74ab3462464cfcbeda80656808cfbb7f8.json",
+      "bundleHash": "0ab599b74ab3462464cfcbeda80656808cfbb7f8",
+      "questionCount": 2376,
+      "nodeCount": 449,
+      "paperCoverage": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    {
+      "id": "51-dp-mathematics-applications-and-interpretation",
+      "name": "DP Mathematics Applications And Interpretation",
+      "bundleUrl": "/data/subjects/51-dp-mathematics-applications-and-interpretation/index-c2fa83ef75c7d7dd0dc6c7915a8c7e0898bb0a8a.json",
+      "bundleHash": "c2fa83ef75c7d7dd0dc6c7915a8c7e0898bb0a8a",
+      "questionCount": 3982,
+      "nodeCount": 84,
+      "paperCoverage": [
+        "1",
+        "2",
+        "3",
+        "unknown"
+      ]
+    },
+    {
+      "id": "59-dp-physics-first-assessment-2025",
+      "name": "DP Physics First Assessment (2025)",
+      "bundleUrl": "/data/subjects/59-dp-physics-first-assessment-2025/index-653e2dee55c200ff57f582d2257373642491b20e.json",
+      "bundleHash": "653e2dee55c200ff57f582d2257373642491b20e",
+      "questionCount": 3824,
+      "nodeCount": 46,
+      "paperCoverage": [
+        "1A",
+        "1B",
+        "2"
+      ]
+    },
+    {
+      "id": "57-dp-biology-first-assessment-2025",
+      "name": "DP Biology First Assessment (2025)",
+      "bundleUrl": "/data/subjects/57-dp-biology-first-assessment-2025/index-222c444218aa484d09fedde955a2782c22ea116d.json",
+      "bundleHash": "222c444218aa484d09fedde955a2782c22ea116d",
+      "questionCount": 4126,
+      "nodeCount": 598,
+      "paperCoverage": [
+        "1A",
+        "1B",
+        "2"
+      ]
+    },
+    {
+      "id": "58-dp-chemistry-first-assessment-2025",
+      "name": "DP Chemistry First Assessment (2025)",
+      "bundleUrl": "/data/subjects/58-dp-chemistry-first-assessment-2025/index-8f1fb8c0c09bd364f9560bff03a7dabbb385fff4.json",
+      "bundleHash": "8f1fb8c0c09bd364f9560bff03a7dabbb385fff4",
+      "questionCount": 2473,
+      "nodeCount": 202,
+      "paperCoverage": [
+        "1A",
+        "1B",
+        "2"
+      ]
+    }
+  ]
+}
