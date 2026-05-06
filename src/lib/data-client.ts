@@ -40,8 +40,9 @@ interface CachedQuestionDetail {
 
 // Bump this when the cached payload shape OR the __IMG__ rewrite base changes,
 // otherwise stale entries continue serving old image origins / pre-A2 truncated HTML.
-const CACHE_SCHEMA_VERSION = 4
-const RAW_GITHUB_DATA_BASE_URL = 'https://raw.githubusercontent.com/kavium/RegretLess/data'
+const CACHE_SCHEMA_VERSION = 5
+const RAW_GITHUB_DATA_BASE_URL =
+  'https://raw.githubusercontent.com/kavium/RegretLess/6573ba8466037cc238ed35a033926ce9d43acbf9'
 
 let cacheSweepPromise: Promise<void> | null = null
 
@@ -135,7 +136,7 @@ async function fetchJsonValidated<T>(
   assetPath: string,
   schema: z.ZodType<T>,
   signal?: AbortSignal,
-  options: { preferRaw?: boolean } = {},
+  options: { preferRaw?: boolean } = { preferRaw: true },
 ): Promise<FetchedJson<T>> {
   let firstError: unknown = null
   let firstSchemaIssues: z.core.$ZodIssue[] | null = null
