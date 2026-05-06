@@ -92,7 +92,7 @@ jobs:
           set -euo pipefail
           count="${{ steps.publish.outputs.restart_count }}"
           count="${count:-0}"
-          if [ "$count" -ge 5 ]; then
+          if [ "$count" -ge 50 ]; then
             echo "restart cap reached ($count); not re-triggering"
             exit 1
           fi
