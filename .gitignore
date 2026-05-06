@@ -29,6 +29,9 @@ dist-ssr
 # Test/coverage output
 coverage/
 
+# Local data-branch worktree
+public/data/
+
 # Env
 .env
 .env.*
