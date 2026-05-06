@@ -40,7 +40,8 @@ interface CachedQuestionDetail {
 
 // Bump this when the cached payload shape OR the __IMG__ rewrite base changes,
 // otherwise stale entries continue serving old image origins / pre-A2 truncated HTML.
-const CACHE_SCHEMA_VERSION = 2
+const CACHE_SCHEMA_VERSION = 3
+const RAW_GITHUB_DATA_BASE_URL = 'https://raw.githubusercontent.com/kavium/RegretLess/data'
 
 let cacheSweepPromise: Promise<void> | null = null
 
@@ -66,16 +67,27 @@ const DATA_BASE_URL = typeof import.meta.env.VITE_DATA_BASE_URL === 'string'
   ? import.meta.env.VITE_DATA_BASE_URL.replace(/\/$/, '')
   : null
 
-function getDataBaseUrl() {
-  if (!DATA_BASE_URL) {
-    return new URL(import.meta.env.BASE_URL, window.location.origin)
-  }
-
-  const url = new URL(DATA_BASE_URL)
+function parseDataBaseUrl(rawUrl: string) {
+  const url = new URL(rawUrl)
   if (!/^https?:$/.test(url.protocol) || url.username || url.password) {
     throw new Error('Invalid VITE_DATA_BASE_URL')
   }
   return url
+}
+
+function getDataBaseUrls() {
+  const primary = DATA_BASE_URL
+    ? parseDataBaseUrl(DATA_BASE_URL)
+    : new URL(import.meta.env.BASE_URL, window.location.origin)
+  const candidates = [primary, parseDataBaseUrl(RAW_GITHUB_DATA_BASE_URL)]
+  const seen = new Set<string>()
+
+  return candidates.filter((url) => {
+    const key = url.toString().replace(/\/$/, '')
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 function assertSubjectId(subjectId: string): asserts subjectId is string {
@@ -88,52 +100,78 @@ function assertQuestionId(questionId: string): asserts questionId is string {
   if (!parsed.success) throw new Error(`invalid questionId: ${questionId}`)
 }
 
-function resolveAssetUrl(assetPath: string) {
+function resolveAssetUrl(assetPath: string, dataBaseUrl = getDataBaseUrls()[0]) {
   if (!assetPath.startsWith('/data/')) {
     throw new Error(`invalid asset path: ${assetPath}`)
   }
 
-  if (!DATA_BASE_URL) {
-    const baseUrl = new URL(import.meta.env.BASE_URL, window.location.origin)
-    return new URL(assetPath.replace(/^\//, ''), baseUrl).toString()
-  }
-
-  const baseUrl = getDataBaseUrl()
-  return new URL(assetPath.replace(/^\/data\//, ''), `${baseUrl.toString().replace(/\/$/, '')}/`).toString()
+  const relativeAssetPath = DATA_BASE_URL
+    ? assetPath.replace(/^\/data\//, '')
+    : assetPath.replace(/^\//, '')
+  const fallbackRelativeAssetPath = assetPath.replace(/^\/data\//, '')
+  const isFallbackBase = dataBaseUrl.toString().replace(/\/$/, '') === RAW_GITHUB_DATA_BASE_URL
+  return new URL(
+    isFallbackBase ? fallbackRelativeAssetPath : relativeAssetPath,
+    `${dataBaseUrl.toString().replace(/\/$/, '')}/`,
+  ).toString()
 }
 
-function imageBaseFor(subjectId: string) {
+function imageBaseFor(subjectId: string, dataBaseUrl?: URL) {
   assertSubjectId(subjectId)
-  return resolveAssetUrl(`/data/subjects/${subjectId}/img`)
+  return resolveAssetUrl(`/data/subjects/${subjectId}/img`, dataBaseUrl)
 }
 
 function isCurrentCacheVersion(record: { schemaVersion?: number } | undefined | null) {
   return record?.schemaVersion === CACHE_SCHEMA_VERSION
 }
 
-async function fetchJsonValidated<T>(assetPath: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(resolveAssetUrl(assetPath), {
-    cache: 'no-store',
-    signal,
-  })
+interface FetchedJson<T> {
+  data: T
+  dataBaseUrl: URL
+}
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${assetPath}: ${response.status}`)
+async function fetchJsonValidated<T>(
+  assetPath: string,
+  schema: z.ZodType<T>,
+  signal?: AbortSignal,
+): Promise<FetchedJson<T>> {
+  let firstError: unknown = null
+  let firstSchemaIssues: z.core.$ZodIssue[] | null = null
+
+  for (const dataBaseUrl of getDataBaseUrls()) {
+    try {
+      const response = await fetch(resolveAssetUrl(assetPath, dataBaseUrl), {
+        cache: 'no-store',
+        signal,
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ${assetPath}: ${response.status}`)
+      }
+
+      const json: unknown = await response.json()
+      const parsed = schema.safeParse(json)
+      if (!parsed.success) {
+        firstSchemaIssues ??= parsed.error.issues.slice(0, 3)
+        throw new Error(`schema validation failed for ${assetPath}`)
+      }
+      return { data: parsed.data, dataBaseUrl }
+    } catch (error) {
+      if (signal?.aborted) throw error
+      firstError ??= error
+    }
   }
 
-  const json: unknown = await response.json()
-  const parsed = schema.safeParse(json)
-  if (!parsed.success) {
-    console.warn(`schema mismatch fetching ${assetPath}:`, parsed.error.issues.slice(0, 3))
-    throw new Error(`schema validation failed for ${assetPath}`)
+  if (firstSchemaIssues) {
+    console.warn(`schema mismatch fetching ${assetPath}:`, firstSchemaIssues)
   }
-  return parsed.data
+  throw firstError ?? new Error(`Failed to fetch ${assetPath}`)
 }
 
 export async function loadPublishedManifest(signal?: AbortSignal): Promise<SubjectManifest> {
   await ensureCacheSweep()
   try {
-    const manifest = await fetchJsonValidated(
+    const { data: manifest } = await fetchJsonValidated(
       `/data/manifest.json?t=${Date.now()}`,
       SubjectManifestSchema,
       signal,
@@ -145,6 +183,15 @@ export async function loadPublishedManifest(signal?: AbortSignal): Promise<Subje
     if (cached && isCurrentCacheVersion(cached)) return cached.data
     throw error
   }
+}
+
+export async function loadPublishedManifestVersion(signal?: AbortSignal) {
+  const { data } = await fetchJsonValidated(
+    `/data/manifest.json?t=${Date.now()}`,
+    z.object({ version: z.string() }),
+    signal,
+  )
+  return data.version
 }
 
 export async function loadPublishedSubjectBundle(
@@ -167,7 +214,7 @@ export async function loadPublishedSubjectBundle(
     return normalizeBundle(cached.data)
   }
 
-  const raw = await fetchJsonValidated(subject.bundleUrl, SubjectBundleSchema, signal)
+  const { data: raw } = await fetchJsonValidated(subject.bundleUrl, SubjectBundleSchema, signal)
   if (raw.subject.id !== subjectId) {
     throw new Error(`bundle subject mismatch for ${subjectId}`)
   }
@@ -194,7 +241,7 @@ export async function loadQuestionDetail(
   const cached = await getCacheItem<CachedQuestionDetail>(cacheKey)
   if (cached && isCurrentCacheVersion(cached) && cached.bundleHash === bundleHash) return cached.data
 
-  const fetched = await fetchJsonValidated(
+  const { data: fetched, dataBaseUrl } = await fetchJsonValidated(
     `/data/subjects/${subjectId}/q/${questionId}.json`,
     QuestionDetailSchema,
     signal,
@@ -202,7 +249,7 @@ export async function loadQuestionDetail(
   if (fetched.questionId !== questionId) {
     throw new Error(`question detail mismatch for ${questionId}`)
   }
-  const imgBase = imageBaseFor(subjectId)
+  const imgBase = imageBaseFor(subjectId, dataBaseUrl)
   const detail: QuestionDetail = {
     ...fetched,
     questionHtml: fetched.questionHtml.replaceAll('__IMG__', imgBase),
@@ -219,7 +266,7 @@ export async function loadQuestionDetail(
 export async function refreshPublishedData(currentManifest: SubjectManifest | null) {
   // Re-fetch published manifest. Server-side re-scrape is run out-of-band by
   // the ingest CLI; there is no /api/refresh endpoint to call here.
-  const manifest = await fetchJsonValidated(
+  const { data: manifest } = await fetchJsonValidated(
     `/data/manifest.json?t=${Date.now()}`,
     SubjectManifestSchema,
   )

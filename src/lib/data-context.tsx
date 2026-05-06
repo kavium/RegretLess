@@ -1,7 +1,12 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { PropsWithChildren } from 'react'
-import { loadPublishedManifest, loadPublishedSubjectBundle, refreshPublishedData as refreshData } from './data-client'
+import {
+  loadPublishedManifest,
+  loadPublishedManifestVersion,
+  loadPublishedSubjectBundle,
+  refreshPublishedData as refreshData,
+} from './data-client'
 import type { SubjectBundle, SubjectManifest } from '../types'
 
 interface DataContextValue {
@@ -68,11 +73,8 @@ export function DataProvider({ children }: PropsWithChildren) {
     const checkVersion = async () => {
       if (cancelled || document.hidden) return
       try {
-        const response = await fetch(`/data/manifest.json?t=${Date.now()}`, { cache: 'no-store' })
-        if (!response.ok) return
-        const json = (await response.json()) as { version?: unknown }
+        const remoteVersion = await loadPublishedManifestVersion()
         if (cancelled) return
-        const remoteVersion = typeof json.version === 'string' ? json.version : null
         if (remoteVersion && bootVersionRef.current && remoteVersion !== bootVersionRef.current) {
           setUpdateAvailable(true)
         }
