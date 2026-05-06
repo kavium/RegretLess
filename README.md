@@ -1,42 +1,36 @@
-# QOL IB Questionbank
+# RegretLess
 
-Static Vite app for building mixed-unit IB practice sets with:
+A free, no-login IB Questionbank alternative built for students preparing for IB Diploma exams. RegretLess covers more than 95% of the questions available in the official IB Questionbank and is designed around the practice workflow that the official tool fails to provide.
 
-- subject picker backed by published JSON bundles
-- mixed umbrella + subunit selection with normalization
-- paper and level filters
-- completed and difficult persistence in the browser
-- resume-from-last-session modal
-- maintainer-side ingest pipeline for refreshing published data
+**Live site:** https://regretless-ib.vercel.app/
+**Alternative site:** https://kavium.github.io/RegretLess/
 
-## Commands
+## Why this exists
 
-```bash
-npm install
-npm run sample-data
-npm run dev
-```
+The official IB Questionbank displays each question alongside its markscheme, with no way to defer the answer, no way to randomize question order, and no way to track progress across a study session. Practising under those conditions encourages passive reading rather than genuine attempts. RegretLess was built to fix that core problem and a number of related quality-of-life gaps that surfaced during development.
 
-Useful scripts:
+## Features
 
-```bash
-npm run test:run
-npm run build
-npm run ingest
-```
+- **Hidden markschemes by default.** Each question is displayed alone. The markscheme is revealed only on explicit request, after an attempt has been made.
+- **Paper filtering.** Questions can be filtered by paper (1A, 1B, 2, etc.) to support targeted drilling of specific paper formats.
+- **Question scrambling.** Question order can be randomized on demand, preventing positional memorization across repeated practice sessions.
+- **Completion tracking.** Questions marked as completed sink to the bottom of the list on the next scramble or page refresh, surfacing unattempted material first.
+- **Difficulty flagging and filtering.** Questions can be marked as difficult and a single toggle filters the list down to the difficult set, enabling focused review of weak areas before exams.
+- **Local-only state.** Progress is persisted in the browser via IndexedDB and localStorage. No accounts, no servers, no tracking.
+- **Subject coverage.** More than 95% of questions from the official IB Questionbank are ingested across supported subjects.
 
-`npm run sample-data` crawls a bounded starter dataset. `npm run ingest` uses the same pipeline without the sample limit.
+## Tech stack
 
-## Data pipeline
+- Vite + React + TypeScript
+- React Router (HashRouter) for client-side routing
+- TanStack Virtual for windowed question lists
+- IndexedDB for cached subject bundles, localStorage for user state
+- A maintainer-side ingest pipeline that crawls the official questionbank and publishes normalized JSON bundles
 
-- `scripts/ingest-questionbank.mjs` discovers subjects, crawls syllabus trees, fetches section pages, and normalizes question pages.
-- Output goes to `public/data/manifest.json` and `public/data/subjects/*.json`.
-- The app caches those published bundles in IndexedDB and keeps user state in localStorage.
+## Project status and contributions
 
-## Deployment
+RegretLess is maintained by a single contributor and provided free of charge. Bug reports, missing-question reports, and feature requests are welcome through the GitHub issue tracker. Pull requests are accepted for clearly scoped fixes; larger changes should be discussed in an issue first.
 
-- Vercel hosts the site and should be connected to this repo for automatic production deploys from `main` plus preview deploys for pull requests.
-- Set `VITE_DATA_BASE_URL` in Vercel to `https://cdn.statically.io/gh/<owner>/<repo>@data` so production reads the published JSON bundles from the GitHub-backed `data` branch.
-- `.github/workflows/ci.yml` runs repository checks only; it does not deploy the site.
-- `.github/workflows/scrape.yml` refreshes published question data on schedule or manual dispatch and pushes updates to the `data` branch.
-- `VITE_BASE` is not needed for Vercel production hosting.
+## Notes on content
+
+Question content is sourced from publicly accessible material on the official IB Questionbank and is reproduced here for educational use by IB students preparing for the IB Diploma exams.
