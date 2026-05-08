@@ -253,6 +253,36 @@ const cylinderDiagram = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 42
 function knownMathContext(referenceCode, originalHtml) {
   const leaf = outerHtmlForLeaf(originalHtml)
 
+  const savingsMatch = referenceCode.match(/^23N\.2\.SL\.TZ([12])\.8/)
+  if (savingsMatch) {
+    const originalText = textFromHtml(originalHtml)
+    if (originalText.startsWith('Daniela wins a prize. She is offered two options')) return null
+
+    const values = savingsMatch[1] === '1'
+      ? {
+          monthlyPrize: '$4200',
+          firstIncreasingPrize: '$1500',
+          monthlyIncreasePercent: '4%',
+          sorinInheritance: '$160 000',
+          sorinInterestPercent: '5%',
+        }
+      : {
+          monthlyPrize: '$5500',
+          firstIncreasingPrize: '$2000',
+          monthlyIncreasePercent: '6%',
+          sorinInheritance: '$120 000',
+          sorinInterestPercent: '4%',
+        }
+
+    const daniela = `<div class="qb-parent-stem"><p>Daniela wins a prize. She is offered two options for receiving her winnings over a period of three years.</p>
+<p>Option A: Daniela receives ${values.monthlyPrize} at the end of each month.</p>
+<p>Option B: Daniela receives ${values.firstIncreasingPrize} at the end of the first month. Each month after this, the amount she receives increases by ${values.monthlyIncreasePercent}.</p></div>`
+    const sorin = `<div class="qb-parent-stem"><p>Sorin received an inheritance of ${values.sorinInheritance}. Sorin invested his inheritance in an account that pays a nominal annual interest rate of ${values.sorinInterestPercent} per annum, compounded monthly. The interest is added on the last day of each month.</p></div>`
+
+    if (/\.8c(?:i|ii)$/.test(referenceCode)) return `${daniela}\n${sorin}\n${leaf}`
+    return `${daniela}\n${originalHtml}`
+  }
+
   if (/^23N\.2\.(?:SL\.TZ2\.9|AHL\.TZ[12]\.10)/.test(referenceCode)) {
     const root = `<div class="qb-parent-stem"><p>A farmer is growing a field of wheat plants. The height, <em>H</em> cm, of each plant can be modelled by a normal distribution with mean &mu; and standard deviation &sigma;.</p>
 <p>It is known that P(<em>H</em> &lt; 94.6) = 0.288 and P(<em>H</em> &gt; 98.1) = 0.434.</p></div>`
