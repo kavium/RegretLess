@@ -56,6 +56,15 @@ function expandMfenced(root: ParentNode) {
   })
 }
 
+function normalizeMathMl(html: string) {
+  if (typeof document === 'undefined' || !html.includes('mfenced')) return html
+
+  const template = document.createElement('template')
+  template.innerHTML = html
+  expandMfenced(template.content)
+  return template.innerHTML
+}
+
 const FORBID_TAGS = ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'meta', 'link']
 const FORBID_ATTR = [
   'onerror', 'onload', 'onclick', 'onmouseover', 'onmouseout', 'onfocus', 'onblur',
@@ -72,13 +81,15 @@ interface SafeHtmlProps {
 export function SafeHtml({ html, className }: SafeHtmlProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const sanitizedHtml = useMemo(
-    () =>
-      DOMPurify.sanitize(html, {
+    () => {
+      const cleanHtml = DOMPurify.sanitize(html, {
         USE_PROFILES: SANITIZE_PROFILES,
         ADD_ATTR: ['target'],
         FORBID_TAGS,
         FORBID_ATTR,
-      }),
+      })
+      return normalizeMathMl(cleanHtml)
+    },
     [html],
   )
 
