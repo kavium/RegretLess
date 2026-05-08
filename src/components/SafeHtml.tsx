@@ -12,6 +12,50 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 })
 
+const MATHML_NS = 'http://www.w3.org/1998/Math/MathML'
+
+// MathJax 4 dropped <mfenced> (removed from MathML Core). Expand to explicit
+// <mrow><mo>open</mo>...<mo>close</mo></mrow> so brackets/parens render.
+function expandMfenced(root: ParentNode) {
+  const fences = root.querySelectorAll('mfenced')
+  fences.forEach((node) => {
+    const doc = node.ownerDocument
+    if (!doc) return
+    const open = node.getAttribute('open') ?? '('
+    const close = node.getAttribute('close') ?? ')'
+    const sepAttr = node.getAttribute('separators')
+    const separators = sepAttr === null ? [','] : Array.from(sepAttr.replace(/\s+/g, ''))
+    const children = Array.from(node.childNodes)
+
+    const mrow = doc.createElementNS(MATHML_NS, 'mrow')
+    if (open) {
+      const o = doc.createElementNS(MATHML_NS, 'mo')
+      o.setAttribute('fence', 'true')
+      o.textContent = open
+      mrow.append(o)
+    }
+    children.forEach((child, i) => {
+      if (i > 0 && separators.length > 0) {
+        const sep = separators[Math.min(i - 1, separators.length - 1)]
+        if (sep) {
+          const s = doc.createElementNS(MATHML_NS, 'mo')
+          s.setAttribute('separator', 'true')
+          s.textContent = sep
+          mrow.append(s)
+        }
+      }
+      mrow.append(child)
+    })
+    if (close) {
+      const c = doc.createElementNS(MATHML_NS, 'mo')
+      c.setAttribute('fence', 'true')
+      c.textContent = close
+      mrow.append(c)
+    }
+    node.replaceWith(mrow)
+  })
+}
+
 const FORBID_TAGS = ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'meta', 'link']
 const FORBID_ATTR = [
   'onerror', 'onload', 'onclick', 'onmouseover', 'onmouseout', 'onfocus', 'onblur',
@@ -40,6 +84,9 @@ export function SafeHtml({ html, className }: SafeHtmlProps) {
 
   useEffect(() => {
     let cancelled = false
+    if (containerRef.current) {
+      expandMfenced(containerRef.current)
+    }
     typesetMath(containerRef.current).finally(() => {
       if (cancelled) return
       // Notify the parent virtualizer that intrinsic size may have changed
