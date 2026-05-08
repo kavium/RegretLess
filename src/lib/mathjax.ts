@@ -28,7 +28,7 @@ export function ensureMathJax() {
     }
 
     const script = document.createElement('script')
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.0.0/tex-mml-chtml.min.js'
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js'
     script.async = true
     script.crossOrigin = 'anonymous'
     script.dataset.mathjax = 'qol-ib-qb'
