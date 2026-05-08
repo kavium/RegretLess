@@ -1,6 +1,6 @@
 {
-  "version": "2026-05-08T12:02:22.534Z",
-  "generatedAt": "2026-05-08T12:02:22.534Z",
+  "version": "2026-05-08T13:43:04.338Z",
+  "generatedAt": "2026-05-08T13:43:04.338Z",
   "subjects": [
     {
       "id": "46-dp-physics-last-assessment-2024",
@@ -45,8 +45,8 @@
     {
       "id": "50-dp-mathematics-analysis-and-approaches",
       "name": "DP Mathematics Analysis And Approaches",
-      "bundleUrl": "/data/subjects/50-dp-mathematics-analysis-and-approaches/index-fe413e27df7274e7ceb1ec95ddcf432b51c21427.json",
-      "bundleHash": "fe413e27df7274e7ceb1ec95ddcf432b51c21427",
+      "bundleUrl": "/data/subjects/50-dp-mathematics-analysis-and-approaches/index-8141eb96a5f38a53322a1cbf89233a7d0620802a.json",
+      "bundleHash": "8141eb96a5f38a53322a1cbf89233a7d0620802a",
       "questionCount": 3090,
       "nodeCount": 89,
       "paperCoverage": [
