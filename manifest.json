@@ -1,13 +1,13 @@
 {
-  "version": "2026-05-09T03:13:50.061Z",
-  "generatedAt": "2026-05-09T03:13:50.061Z",
+  "version": "2026-05-09T06:35:37.669Z",
+  "generatedAt": "2026-05-09T06:35:37.670Z",
   "subjects": [
     {
       "id": "46-dp-physics-last-assessment-2024",
       "name": "DP Physics Last Assessment (2024)",
-      "bundleUrl": "/data/subjects/46-dp-physics-last-assessment-2024/index-14a75e11fb025d951f2267296b536ca333303e45.json",
-      "bundleHash": "14a75e11fb025d951f2267296b536ca333303e45",
-      "questionCount": 6204,
+      "bundleUrl": "/data/subjects/46-dp-physics-last-assessment-2024/index-2e07e136b04df793bbbcbc4b7ff4d082daf1f496.json",
+      "bundleHash": "2e07e136b04df793bbbcbc4b7ff4d082daf1f496",
+      "questionCount": 2905,
       "nodeCount": 81,
       "paperCoverage": [
         "1",
@@ -18,23 +18,23 @@
     {
       "id": "43-dp-biology-last-assessment-2024",
       "name": "DP Biology Last Assessment (2024)",
-      "bundleUrl": "/data/subjects/43-dp-biology-last-assessment-2024/index-47dbb672201298abb2f31599ef38c1e8664d5217.json",
-      "bundleHash": "47dbb672201298abb2f31599ef38c1e8664d5217",
-      "questionCount": 6603,
+      "bundleUrl": "/data/subjects/43-dp-biology-last-assessment-2024/index-f408daafb20b6b19a920270a25cec3ae43685089.json",
+      "bundleHash": "f408daafb20b6b19a920270a25cec3ae43685089",
+      "questionCount": 2995,
       "nodeCount": 99,
       "paperCoverage": [
-        "unknown",
         "1",
         "2",
-        "3"
+        "3",
+        "unknown"
       ]
     },
     {
       "id": "45-dp-chemistry-last-assessment-2024",
       "name": "DP Chemistry Last Assessment (2024)",
-      "bundleUrl": "/data/subjects/45-dp-chemistry-last-assessment-2024/index-c6b09d02393d038562e7a462952c1cc89aff4984.json",
-      "bundleHash": "c6b09d02393d038562e7a462952c1cc89aff4984",
-      "questionCount": 7943,
+      "bundleUrl": "/data/subjects/45-dp-chemistry-last-assessment-2024/index-79b951f14a39a5899059593a3693aab4dd6aa8f2.json",
+      "bundleHash": "79b951f14a39a5899059593a3693aab4dd6aa8f2",
+      "questionCount": 3764,
       "nodeCount": 113,
       "paperCoverage": [
         "1",
@@ -45,9 +45,9 @@
     {
       "id": "50-dp-mathematics-analysis-and-approaches",
       "name": "DP Mathematics Analysis And Approaches",
-      "bundleUrl": "/data/subjects/50-dp-mathematics-analysis-and-approaches/index-80c22774e30dbdc81b4ef3c606f80d7576f6dbfd.json",
-      "bundleHash": "80c22774e30dbdc81b4ef3c606f80d7576f6dbfd",
-      "questionCount": 3090,
+      "bundleUrl": "/data/subjects/50-dp-mathematics-analysis-and-approaches/index-7c8db4031587367f54cc6e411445df44a96fa113.json",
+      "bundleHash": "7c8db4031587367f54cc6e411445df44a96fa113",
+      "questionCount": 2575,
       "nodeCount": 89,
       "paperCoverage": [
         "1",
@@ -58,36 +58,36 @@
     {
       "id": "48-dp-economics",
       "name": "DP Economics",
-      "bundleUrl": "/data/subjects/48-dp-economics/index-ac16ca45fe35d0bc69b9497f7b4b4bd11d07c43e.json",
-      "bundleHash": "ac16ca45fe35d0bc69b9497f7b4b4bd11d07c43e",
-      "questionCount": 2376,
+      "bundleUrl": "/data/subjects/48-dp-economics/index-50d70f8331db4e8c8c15ea805323f65cb4461584.json",
+      "bundleHash": "50d70f8331db4e8c8c15ea805323f65cb4461584",
+      "questionCount": 1135,
       "nodeCount": 449,
       "paperCoverage": [
         "1",
-        "3",
-        "2"
+        "2",
+        "3"
       ]
     },
     {
       "id": "51-dp-mathematics-applications-and-interpretation",
       "name": "DP Mathematics Applications And Interpretation",
-      "bundleUrl": "/data/subjects/51-dp-mathematics-applications-and-interpretation/index-f7172e047ecaf37cd9c9fe1395c2c27f805c2c5e.json",
-      "bundleHash": "f7172e047ecaf37cd9c9fe1395c2c27f805c2c5e",
-      "questionCount": 3982,
+      "bundleUrl": "/data/subjects/51-dp-mathematics-applications-and-interpretation/index-8ecea80b5097d9e24cbf1fa936054165043f8850.json",
+      "bundleHash": "8ecea80b5097d9e24cbf1fa936054165043f8850",
+      "questionCount": 3385,
       "nodeCount": 84,
       "paperCoverage": [
-        "unknown",
-        "2",
         "1",
-        "3"
+        "2",
+        "3",
+        "unknown"
       ]
     },
     {
       "id": "59-dp-physics-first-assessment-2025",
       "name": "DP Physics First Assessment (2025)",
-      "bundleUrl": "/data/subjects/59-dp-physics-first-assessment-2025/index-c247b625be0c5aa5e86f2d5a677f740dc3c55692.json",
-      "bundleHash": "c247b625be0c5aa5e86f2d5a677f740dc3c55692",
-      "questionCount": 3824,
+      "bundleUrl": "/data/subjects/59-dp-physics-first-assessment-2025/index-c1ae27c06a2adb5829466a95616088ebbf1845f1.json",
+      "bundleHash": "c1ae27c06a2adb5829466a95616088ebbf1845f1",
+      "questionCount": 1503,
       "nodeCount": 46,
       "paperCoverage": [
         "1A",
@@ -98,9 +98,9 @@
     {
       "id": "57-dp-biology-first-assessment-2025",
       "name": "DP Biology First Assessment (2025)",
-      "bundleUrl": "/data/subjects/57-dp-biology-first-assessment-2025/index-315557d2b2d4166bd1a916d736ad4b868e533b31.json",
-      "bundleHash": "315557d2b2d4166bd1a916d736ad4b868e533b31",
-      "questionCount": 4126,
+      "bundleUrl": "/data/subjects/57-dp-biology-first-assessment-2025/index-27c14b96f11241980bf86fbcba22e35c94fa642c.json",
+      "bundleHash": "27c14b96f11241980bf86fbcba22e35c94fa642c",
+      "questionCount": 1528,
       "nodeCount": 598,
       "paperCoverage": [
         "1A",
@@ -111,9 +111,9 @@
     {
       "id": "58-dp-chemistry-first-assessment-2025",
       "name": "DP Chemistry First Assessment (2025)",
-      "bundleUrl": "/data/subjects/58-dp-chemistry-first-assessment-2025/index-fe95cf2769bd02d84bbad0a368c7ae2e0d78565a.json",
-      "bundleHash": "fe95cf2769bd02d84bbad0a368c7ae2e0d78565a",
-      "questionCount": 2473,
+      "bundleUrl": "/data/subjects/58-dp-chemistry-first-assessment-2025/index-d6c3ad8b67b4759fa5a298601662c37b1ad4000f.json",
+      "bundleHash": "d6c3ad8b67b4759fa5a298601662c37b1ad4000f",
+      "questionCount": 1171,
       "nodeCount": 202,
       "paperCoverage": [
         "1A",
