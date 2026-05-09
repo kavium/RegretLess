@@ -25,6 +25,10 @@ dist-ssr
 
 # Claude Code
 .claude/
+AGENTS.md
+CLAUDE.md
+.codex/
+.agents/
 
 # Test/coverage output
 coverage/

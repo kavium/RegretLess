@@ -226,6 +226,141 @@ function paperCoverageFor(questions) {
   return order.filter((p) => seen.has(p))
 }
 
+function textLength(value) {
+  return typeof value === 'string' ? value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().length : 0
+}
+
+function mediaCount(value) {
+  if (typeof value !== 'string') return 0
+  return (value.match(/<img\b|__IMG__|<svg\b|<table\b/gi) ?? []).length
+}
+
+function detailScore(detail) {
+  if (!detail) return -1
+  return (
+    mediaCount(detail.questionHtml) * 1000
+    + mediaCount(detail.markschemeHtml) * 200
+    + textLength(detail.questionHtml)
+    + Math.min(2000, textLength(detail.markschemeHtml))
+  )
+}
+
+function compareQuestionIds(left, right) {
+  const leftNumber = Number(left)
+  const rightNumber = Number(right)
+  if (Number.isSafeInteger(leftNumber) && Number.isSafeInteger(rightNumber)) {
+    return leftNumber - rightNumber
+  }
+  return String(left).localeCompare(String(right))
+}
+
+function pickQuestionTagKeeper(records, detailsById) {
+  return records.slice().sort((left, right) => {
+    const scoreDelta = detailScore(detailsById.get(right.questionId)) - detailScore(detailsById.get(left.questionId))
+    if (scoreDelta !== 0) return scoreDelta
+    return compareQuestionIds(left.questionId, right.questionId)
+  })[0]
+}
+
+function orderedUnion(values, orderMap) {
+  return [...new Set(values)].sort((left, right) => {
+    const orderDelta = (orderMap[left] ?? Number.MAX_SAFE_INTEGER) - (orderMap[right] ?? Number.MAX_SAFE_INTEGER)
+    if (orderDelta !== 0) return orderDelta
+    return String(left).localeCompare(String(right))
+  })
+}
+
+function dedupeQuestionIdList(ids) {
+  const seen = new Set()
+  const deduped = []
+  for (const id of ids) {
+    if (seen.has(id)) continue
+    seen.add(id)
+    deduped.push(id)
+  }
+  return deduped
+}
+
+async function removeIfExists(filePath) {
+  try {
+    await unlink(filePath)
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
+}
+
+async function dedupeQuestionTags(subjectId, metaMap, sectionQuestionOrder, sectionOrderIndex, { removeDuplicateDetails = false } = {}) {
+  const byReferenceCode = new Map()
+  for (const question of metaMap.values()) {
+    if (!question.referenceCode) continue
+    const group = byReferenceCode.get(question.referenceCode) ?? []
+    group.push(question)
+    byReferenceCode.set(question.referenceCode, group)
+  }
+
+  const duplicateGroups = [...byReferenceCode.values()].filter((group) => group.length > 1)
+  if (duplicateGroups.length === 0) {
+    return { removedQuestions: 0, duplicateTags: 0 }
+  }
+
+  const duplicateIds = new Set(duplicateGroups.flatMap((group) => group.map((question) => question.questionId)))
+  const detailsById = new Map()
+  await Promise.all([...duplicateIds].map(async (questionId) => {
+    try {
+      detailsById.set(questionId, await readJson(resolveQuestionPath(subjectId, questionId)))
+    } catch {
+      detailsById.set(questionId, null)
+    }
+  }))
+
+  const duplicateToKeeper = new Map()
+  const removedIds = new Set()
+  const mergedByKeeperId = new Map()
+
+  for (const group of duplicateGroups) {
+    const keeper = pickQuestionTagKeeper(group, detailsById)
+    const sectionOrders = {}
+    for (const question of group) {
+      for (const [sectionId, order] of Object.entries(question.sectionOrders ?? {})) {
+        sectionOrders[sectionId] = Math.min(sectionOrders[sectionId] ?? order, order)
+      }
+    }
+
+    mergedByKeeperId.set(keeper.questionId, {
+      ...keeper,
+      memberSectionIds: orderedUnion(
+        group.flatMap((question) => question.memberSectionIds ?? []),
+        sectionOrderIndex,
+      ),
+      sectionOrders,
+    })
+
+    for (const question of group) {
+      duplicateToKeeper.set(question.questionId, keeper.questionId)
+      if (question.questionId !== keeper.questionId) {
+        removedIds.add(question.questionId)
+      }
+    }
+  }
+
+  for (const questionId of removedIds) {
+    metaMap.delete(questionId)
+  }
+  for (const [questionId, question] of mergedByKeeperId) {
+    metaMap.set(questionId, question)
+  }
+
+  for (const [sectionId, ids] of Object.entries(sectionQuestionOrder)) {
+    sectionQuestionOrder[sectionId] = dedupeQuestionIdList(ids.map((id) => duplicateToKeeper.get(id) ?? id))
+  }
+
+  if (removeDuplicateDetails) {
+    await Promise.all([...removedIds].map((questionId) => removeIfExists(resolveQuestionPath(subjectId, questionId))))
+  }
+
+  return { removedQuestions: removedIds.size, duplicateTags: duplicateGroups.length }
+}
+
 function validateBundleIntegrity(bundle) {
   const questionIds = new Set(bundle.questions.map((q) => q.questionId))
   const syllabusIds = new Set(bundle.syllabus.map((node) => node.id))
@@ -313,6 +448,7 @@ async function ingestSubject(subject, options) {
 
   let sectionsDone = 0
   const writeIndexSnapshot = async () => {
+    await dedupeQuestionTags(subject.id, metaMap, sectionQuestionOrder, sectionOrderIndex)
     const snapshotQuestions = [...metaMap.values()].sort((left, right) =>
       left.referenceCode.localeCompare(right.referenceCode),
     )
@@ -524,6 +660,9 @@ async function ingestSubject(subject, options) {
     }
   })
 
+  const dedupeResult = await dedupeQuestionTags(subject.id, metaMap, sectionQuestionOrder, sectionOrderIndex, {
+    removeDuplicateDetails: true,
+  })
   const questions = [...metaMap.values()].sort((left, right) => left.referenceCode.localeCompare(right.referenceCode))
 
   const index = {
@@ -537,7 +676,8 @@ async function ingestSubject(subject, options) {
   await writeJsonAtomic(indexPath, index)
 
   console.log(
-    `[${subject.id}] done: ${questions.length} total, +${addedQuestionCount} new, ${sectionFetchFailures} section fetch failures`,
+    `[${subject.id}] done: ${questions.length} total, +${addedQuestionCount} new, `
+    + `${dedupeResult.removedQuestions} duplicate-tag copies removed, ${sectionFetchFailures} section fetch failures`,
   )
 
   return { index, sectionFetchFailures }

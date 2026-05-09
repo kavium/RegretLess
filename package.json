@@ -11,6 +11,7 @@
     "test": "vitest",
     "test:run": "vitest run --coverage",
     "ingest": "node ./scripts/ingest-questionbank.mjs",
+    "dedupe:question-tags": "node ./scripts/dedupe-question-tags.mjs",
     "sample-data": "node ./scripts/ingest-questionbank.mjs --sample",
     "audit:orphans": "node ./scripts/audit-orphan-question-families.mjs"
   },
