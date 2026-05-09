@@ -73,6 +73,19 @@ const bundle: SubjectBundle = {
       memberSectionIds: ['B'],
       sectionOrders: { B: 0 },
     },
+    {
+      questionId: 'q5',
+      referenceCode: 'EXE.2.SL.TZ0.2',
+      subjectId: 'physics',
+      title: 'duplicate q2',
+      paper: '2',
+      level: 'SL',
+      questionNumber: '2',
+      marksAvailable: '1',
+      breadcrumbLabels: ['B'],
+      memberSectionIds: ['B'],
+      sectionOrders: { B: 1 },
+    },
   ],
 }
 
@@ -82,6 +95,21 @@ describe('question ordering', () => {
 
   it('preserves source order before completion partitioning', () => {
     const canonical = buildCanonicalQuestionSequence(bundle, selection, index)
+    expect(canonical).toEqual(['q1', 'q2', 'q3', 'q4'])
+  })
+
+  it('shows only one copy of duplicated question tags', () => {
+    const canonical = buildCanonicalQuestionSequence(
+      {
+        ...bundle,
+        sectionQuestionOrder: {
+          ...bundle.sectionQuestionOrder,
+          B: ['q4', 'q5'],
+        },
+      },
+      selection,
+      index,
+    )
     expect(canonical).toEqual(['q1', 'q2', 'q3', 'q4'])
   })
 

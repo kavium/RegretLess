@@ -50,6 +50,8 @@ export function buildCanonicalQuestionSequence(
     (nodeId) => selectedSectionIds.has(nodeId),
   )
   const seen = new Set<string>()
+  const seenReferenceCodes = new Set<string>()
+  const questionMap = createQuestionMap(bundle)
   const questionIds: string[] = []
 
   for (const sectionId of orderedSectionIds) {
@@ -58,6 +60,14 @@ export function buildCanonicalQuestionSequence(
     for (const questionId of sectionQuestionIds) {
       if (seen.has(questionId)) {
         continue
+      }
+
+      const question = questionMap.get(questionId)
+      if (question?.referenceCode) {
+        if (seenReferenceCodes.has(question.referenceCode)) {
+          continue
+        }
+        seenReferenceCodes.add(question.referenceCode)
       }
 
       seen.add(questionId)
