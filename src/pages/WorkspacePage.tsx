@@ -17,6 +17,9 @@ import './WorkspacePage.css'
 
 const PAPER_TINTS: Record<string, 'rose' | 'butter' | 'sky'> = { '1A': 'rose', '1B': 'butter', '1': 'rose', '2': 'sky', '3': 'butter' }
 const COMPLETED_TIP_KEY = 'qol-ib-qb:completed-tip-shown'
+const BROKEN_TIP_KEY = 'qol-ib-qb:broken-tip-shown'
+const COMPLETED_TIP_MESSAGE = 'Questions selected as completed appear at the bottom of the question list on next scramble or page refresh.'
+const BROKEN_TIP_MESSAGE = "Broken questions refer to earlier missing parts, so they may be hard to solve in isolation. They stay hidden unless you use the Broken filter. Don't worry, if you attempt one and mark it difficult, we will still show it when you filter by difficult only."
 
 interface VirtualQuestionListProps {
   questionIds: string[]
@@ -115,6 +118,7 @@ export function WorkspacePage() {
   const [details, setDetails] = useState<Record<string, QuestionDetail | 'loading' | 'error'>>({})
   const [refreshState, setRefreshState] = useState<'idle' | 'working'>('idle')
   const [completedTip, setCompletedTip] = useState<{ id: string; anchor: HTMLElement } | null>(null)
+  const [brokenTip, setBrokenTip] = useState<{ anchor: HTMLElement } | null>(null)
   const restoreAttempted = useRef(false)
   const detailAttemptsRef = useRef<Map<string, 'pending' | 'done' | 'failed'>>(new Map())
   const [retryTick, setRetryTick] = useState(0)
@@ -406,7 +410,14 @@ export function WorkspacePage() {
           <button
             type="button"
             className={`ws__chip${filters.showBroken ? ' is-active' : ''}`}
-            onClick={() => updateFilters({ ...filters, showBroken: !filters.showBroken })}
+            onClick={(event) => {
+              const target = event.currentTarget
+              updateFilters({ ...filters, showBroken: !filters.showBroken })
+              if (!sessionStorage.getItem(BROKEN_TIP_KEY)) {
+                sessionStorage.setItem(BROKEN_TIP_KEY, '1')
+                setBrokenTip({ anchor: target })
+              }
+            }}
           >
             <AlertTriangle size={12} /> Broken
           </button>
@@ -612,13 +623,14 @@ export function WorkspacePage() {
         <span>No regrets. Just marks. · M26</span>
       </footer>
 
-      {completedTip ? <CompletedTipBubble anchor={completedTip.anchor} onDismiss={() => setCompletedTip(null)} /> : null}
+      {completedTip ? <WorkspaceTipBubble anchor={completedTip.anchor} message={COMPLETED_TIP_MESSAGE} onDismiss={() => setCompletedTip(null)} /> : null}
+      {brokenTip ? <WorkspaceTipBubble anchor={brokenTip.anchor} message={BROKEN_TIP_MESSAGE} onDismiss={() => setBrokenTip(null)} /> : null}
 
     </div>
   )
 }
 
-function CompletedTipBubble({ anchor, onDismiss }: { anchor: HTMLElement; onDismiss: () => void }) {
+function WorkspaceTipBubble({ anchor, message, onDismiss }: { anchor: HTMLElement; message: string; onDismiss: () => void }) {
   const bubbleRef = useRef<HTMLDivElement | null>(null)
   const [pos, setPos] = useState<{ top: number; right: number; placement: 'top' | 'bottom' } | null>(null)
 
@@ -651,7 +663,7 @@ function CompletedTipBubble({ anchor, onDismiss }: { anchor: HTMLElement; onDism
       role="status"
       style={pos ? { top: pos.top, right: pos.right } : { top: -9999, right: 0, visibility: 'hidden' }}
     >
-      <span>Questions selected as completed appear at the bottom of the question list on next scramble or page refresh.</span>
+      <span>{message}</span>
       <button type="button" className="ws__bubble-x" aria-label="Dismiss" onClick={onDismiss}>
         <X size={12} />
       </button>
