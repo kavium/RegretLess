@@ -10,6 +10,12 @@ const MATH_SUBJECT_IDS = new Set([
 ])
 const USEFUL_PARENT_PATTERN =
   /\b(?:consider|diagram|graph|table|figure|shown|given|following|data|function|random|model|experiment|let)\b/i
+const ORPHAN_CONTEXT_PATTERN =
+  /\b(?:above|below|shown|following|given|provided|diagram|graph|table|figure|image|photograph|micrograph|source|extract|data|compound|molecule|substance|species|curve|function|sequence|series|investment|option|part)\b/i
+const LEAF_ONLY_PATTERN =
+  /^(?:option\s+[A-D][.;]?|[A-D][.;]?|hence\b|therefore\b|find\b|calculate\b|determine\b|state\b|write down\b|deduce\b|show that\b|explain\b|suggest\b|identify\b|outline\b)/i
+const COMMAND_PATTERN =
+  /^(?:find|calculate|determine|state|write down|deduce|show that|explain|suggest|identify|outline|describe|complete|use|sketch|draw|label|interpret|estimate|comment|justify|compare|distinguish|predict|evaluate)\b/i
 function parseArgs(argv) {
   const options = {
     dataRoot: DEFAULT_DATA_ROOT,
@@ -56,6 +62,10 @@ function mediaCount(html) {
   return $('img, image, source, svg, table').length
 }
 
+function hasVisualContext(html) {
+  return mediaCount(html) > 0
+}
+
 function parentStems(html) {
   const $ = cheerio.load(html || '')
   return $('.qb-parent-stem, .q_resource').map((_, element) => $.html(element)).get()
@@ -71,15 +81,38 @@ function normalizeRef(referenceCode) {
 
 function familyRef(referenceCode) {
   const raw = String(referenceCode || '')
-  const numberedPart = raw.match(/^(.*?\.(?:T_)?\d+)[a-z](?:(?:\.|\()?([ivxlcdm]+)\)?)?$/i)
-  if (numberedPart) return numberedPart[1]
+  const questionNumber = raw.match(/^(.*?\.TZ[^.]+\.\d+)/i)
+  if (!questionNumber) return null
 
-  const compactPart = raw.match(/^(.*?\.(?:T_)?\d+)[a-z]+$/i)
-  return compactPart ? compactPart[1] : null
+  return questionNumber[1]
+}
+
+function hasSubpartRef(referenceCode) {
+  const family = familyRef(referenceCode)
+  return Boolean(family && normalizeRef(referenceCode) !== normalizeRef(family))
 }
 
 function normalizedParentKey(html) {
   return textFromHtml(html).toLowerCase().replace(/\s+/g, ' ').slice(0, 700)
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function orphanNeedsContext(html) {
+  if (hasParentContext(html)) return false
+
+  const text = textFromHtml(html)
+  if (!text || text.length > 320) return false
+  if (mediaCount(html) > 0) return false
+
+  return ORPHAN_CONTEXT_PATTERN.test(text) || LEAF_ONLY_PATTERN.test(text)
+}
+
+function referencedPartLetters(text) {
+  return [...String(text || '').matchAll(/\bpart\s*\(?([a-z])\)?/gi)]
+    .map((match) => match[1].toLowerCase())
 }
 
 function outerHtmlForLeaf(html) {
@@ -138,6 +171,7 @@ async function repairExactDuplicates(subject, dryRun) {
 
   for (const group of byRef.values()) {
     if (group.length < 2) continue
+    if (!hasSubpartRef(group[0].meta.referenceCode)) continue
     const donor = group.slice().sort((left, right) => duplicateScore(right) - duplicateScore(left))[0]
 
     for (const target of group) {
@@ -217,6 +251,184 @@ async function repairMathFamilyParents(subject, dryRun) {
         questionId: target.meta.questionId,
         referenceCode: target.meta.referenceCode,
         kind: 'math-family',
+      })
+
+      if (!dryRun) {
+        target.detail.questionHtml = `${parent}\n${outerHtmlForLeaf(target.detail.questionHtml)}`
+        await writeJsonAtomic(target.detailPath, target.detail)
+      }
+    }
+  }
+
+  return changes
+}
+
+function chooseParentForTarget(target, group) {
+  const targetText = textFromHtml(target.detail.questionHtml)
+  const family = familyRef(target.meta.referenceCode)
+
+  const exactRefDonors = group.filter((item) => (
+    item !== target
+    && normalizeRef(item.meta.referenceCode) === normalizeRef(target.meta.referenceCode)
+    && parentStems(item.detail.questionHtml).length > 0
+  ))
+
+  if (exactRefDonors.length) {
+    return exactRefDonors
+      .slice()
+      .sort((left, right) => duplicateScore(right) - duplicateScore(left))[0]
+      ? parentStems(exactRefDonors.slice().sort((left, right) => duplicateScore(right) - duplicateScore(left))[0].detail.questionHtml).join('\n')
+      : null
+  }
+
+  for (const letter of referencedPartLetters(targetText)) {
+    const partPattern = new RegExp(`^${escapeRegExp(family)}${letter}(?:$|[.()ivxlcdm])`, 'i')
+    const partDonors = group.filter((item) => (
+      item !== target
+      && partPattern.test(String(item.meta.referenceCode || ''))
+      && parentStems(item.detail.questionHtml).length > 0
+    ))
+
+    if (partDonors.length) {
+      const donor = partDonors.slice().sort((left, right) => duplicateScore(right) - duplicateScore(left))[0]
+      return parentStems(donor.detail.questionHtml).join('\n')
+    }
+  }
+
+  const candidateParents = group
+    .flatMap((item) => parentStems(item.detail.questionHtml))
+    .filter(Boolean)
+
+  if (!candidateParents.length) return null
+
+  const counts = new Map()
+  for (const parent of candidateParents) {
+    const key = normalizedParentKey(parent)
+    const current = counts.get(key) ?? { count: 0, parent }
+    current.count += 1
+    counts.set(key, current)
+  }
+
+  const ranked = [...counts.values()].sort((left, right) => right.count - left.count)
+  const winner = ranked[0]
+  const hasClearWinner = winner.count >= 2
+    && winner.count >= Math.ceil(candidateParents.length * 0.5)
+    && (usefulParent(winner.parent) || winner.count > 1)
+
+  return hasClearWinner ? winner.parent : null
+}
+
+function fragmentChildren($) {
+  const bodyChildren = $('body').children().toArray()
+  if (bodyChildren.length) return bodyChildren
+  return $.root().children().toArray()
+}
+
+function childHasVisual($, child) {
+  return $(child).find('img, image, source, svg, table').length > 0
+    || ['img', 'image', 'source', 'svg', 'table'].includes(child.tagName)
+}
+
+function extractEmbeddedContext(html) {
+  if (!hasVisualContext(html) || hasParentContext(html)) return null
+
+  const $ = cheerio.load(html || '')
+  const children = fragmentChildren($).filter((child) => {
+    if (child.type !== 'tag') return false
+    return textFromHtml($.html(child)) || childHasVisual($, child)
+  })
+
+  if (!children.length) return null
+
+  while (children.length) {
+    const last = children.at(-1)
+    const lastText = textFromHtml($.html(last))
+    if (!lastText || (!childHasVisual($, last) && COMMAND_PATTERN.test(lastText))) {
+      children.pop()
+      continue
+    }
+    break
+  }
+
+  if (children.length > 1) {
+    const first = children[0]
+    const firstText = textFromHtml($.html(first))
+    const restHasVisual = children.slice(1).some((child) => childHasVisual($, child))
+    if (!childHasVisual($, first) && restHasVisual && COMMAND_PATTERN.test(firstText)) {
+      children.shift()
+    }
+  }
+
+  const contextHtml = children.map((child) => $.html(child)).join('\n')
+  if (!contextHtml || !hasVisualContext(contextHtml)) return null
+
+  return `<div class="qb-parent-stem">${contextHtml}</div>`
+}
+
+function chooseEmbeddedContextForTarget(target, group) {
+  const targetText = textFromHtml(target.detail.questionHtml)
+  const family = familyRef(target.meta.referenceCode)
+
+  for (const letter of referencedPartLetters(targetText)) {
+    const partPattern = new RegExp(`^${escapeRegExp(family)}${letter}(?:$|[.()ivxlcdm])`, 'i')
+    const partDonors = group
+      .filter((item) => item !== target && partPattern.test(String(item.meta.referenceCode || '')))
+      .map((item) => extractEmbeddedContext(item.detail.questionHtml))
+      .filter(Boolean)
+
+    if (partDonors.length) return partDonors[0]
+  }
+
+  const candidates = group
+    .filter((item) => item !== target)
+    .map((item) => extractEmbeddedContext(item.detail.questionHtml))
+    .filter(Boolean)
+
+  if (!candidates.length) return null
+
+  const counts = new Map()
+  for (const candidate of candidates) {
+    const key = normalizedParentKey(candidate)
+    const current = counts.get(key) ?? { count: 0, candidate }
+    current.count += 1
+    counts.set(key, current)
+  }
+
+  const ranked = [...counts.values()].sort((left, right) => right.count - left.count)
+  return ranked[0].count >= 2 ? ranked[0].candidate : null
+}
+
+async function repairOrphanFamilyParents(subject, dryRun) {
+  const byFamily = new Map()
+  const changes = []
+
+  for (const item of subject.items) {
+    const family = familyRef(item.meta.referenceCode)
+    if (!family) continue
+    const group = byFamily.get(family) ?? []
+    group.push(item)
+    byFamily.set(family, group)
+  }
+
+  for (const group of byFamily.values()) {
+    if (group.length < 2) continue
+
+    for (const target of group) {
+      if (!hasSubpartRef(target.meta.referenceCode)) continue
+      if (!orphanNeedsContext(target.detail.questionHtml)) continue
+
+      const parent = chooseParentForTarget(target, group)
+        ?? chooseEmbeddedContextForTarget(target, group)
+      if (!parent) continue
+
+      const parentText = textFromHtml(parent)
+      const currentText = textFromHtml(target.detail.questionHtml)
+      if (currentText.includes(parentText.slice(0, Math.min(80, parentText.length)))) continue
+
+      changes.push({
+        questionId: target.meta.questionId,
+        referenceCode: target.meta.referenceCode,
+        kind: 'family-parent',
       })
 
       if (!dryRun) {
@@ -380,6 +592,7 @@ async function main() {
     const subject = await loadSubject(options.dataRoot, manifestSubject.id)
     const changes = [
       ...(await repairExactDuplicates(subject, options.dryRun)),
+      ...(await repairOrphanFamilyParents(subject, options.dryRun)),
       ...(await repairMathFamilyParents(subject, options.dryRun)),
       ...(await repairKnownMathContext(subject, options.dryRun)),
     ]

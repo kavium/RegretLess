@@ -40,9 +40,9 @@ interface CachedQuestionDetail {
 
 // Bump this when the cached payload shape OR the __IMG__ rewrite base changes,
 // otherwise stale entries continue serving old image origins / pre-A2 truncated HTML.
-const CACHE_SCHEMA_VERSION = 7
+const CACHE_SCHEMA_VERSION = 8
 const RAW_GITHUB_DATA_BASE_URL =
-  'https://raw.githubusercontent.com/kavium/RegretLess/640f774a761783eb8cde50bf56267eee3313f6eb'
+  'https://raw.githubusercontent.com/kavium/RegretLess/85caa653b6f526cb9655bb956ff6e01a846dcedb'
 
 let cacheSweepPromise: Promise<void> | null = null
 
