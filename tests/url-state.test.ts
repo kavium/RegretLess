@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseWorkspaceFilters } from '../src/lib/url-state'
+import { buildWorkspacePath, parseWorkspaceFilters } from '../src/lib/url-state'
 
 describe('parseWorkspaceFilters', () => {
   it('falls back to defaults when params are absent', () => {
@@ -10,6 +10,8 @@ describe('parseWorkspaceFilters', () => {
     expect(r.scrambleNonce).toBe(0)
     expect(r.expandedQuestionId).toBeNull()
     expect(r.onlyDifficult).toBe(false)
+    expect(r.showBroken).toBe(false)
+    expect(r.displayMode).toBe('tags')
   })
 
   it('rejects garbage paper/level codes and falls back', () => {
@@ -34,7 +36,54 @@ describe('parseWorkspaceFilters', () => {
     expect(parseWorkspaceFilters(new URLSearchParams('difficult=')).onlyDifficult).toBe(false)
   })
 
+  it('parses broken and numbered display params', () => {
+    const r = parseWorkspaceFilters(new URLSearchParams('broken=1&display=numbered'))
+    expect(r.showBroken).toBe(true)
+    expect(r.displayMode).toBe('numbered')
+    expect(parseWorkspaceFilters(new URLSearchParams('broken=true&display=tags')).showBroken).toBe(false)
+    expect(parseWorkspaceFilters(new URLSearchParams('display=other')).displayMode).toBe('tags')
+  })
+
   it('drops invalid expanded question ids', () => {
     expect(parseWorkspaceFilters(new URLSearchParams('expanded=__proto__')).expandedQuestionId).toBeNull()
+  })
+})
+
+describe('buildWorkspacePath', () => {
+  it('emits broken and numbered display params only when enabled', () => {
+    const path = buildWorkspacePath(
+      'physics',
+      { umbrellaIds: ['A'], subunitIds: [] },
+      {
+        paperFilters: ['1A'],
+        levelFilters: ['HL'],
+        onlyDifficult: false,
+        showBroken: true,
+        displayMode: 'numbered',
+        orderMode: 'source',
+        scrambleNonce: 0,
+        expandedQuestionId: null,
+      },
+    )
+
+    expect(path).toContain('broken=1')
+    expect(path).toContain('display=numbered')
+
+    const defaultPath = buildWorkspacePath(
+      'physics',
+      { umbrellaIds: ['A'], subunitIds: [] },
+      {
+        paperFilters: ['1A'],
+        levelFilters: ['HL'],
+        onlyDifficult: false,
+        showBroken: false,
+        displayMode: 'tags',
+        orderMode: 'source',
+        scrambleNonce: 0,
+        expandedQuestionId: null,
+      },
+    )
+    expect(defaultPath).not.toContain('broken=')
+    expect(defaultPath).not.toContain('display=')
   })
 })

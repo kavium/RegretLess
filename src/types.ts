@@ -1,6 +1,7 @@
 export type PaperCode = '1A' | '1B' | '1' | '2' | '3' | 'unknown'
 export type LevelCode = 'SL' | 'HL'
 export type OrderMode = 'source' | 'scrambled'
+export type DisplayMode = 'tags' | 'numbered'
 export type SyllabusNodeKind = 'umbrella' | 'subunit'
 
 export interface SubjectManifestEntry {
@@ -80,6 +81,8 @@ export interface WorkspaceState {
   paperFilters: PaperCode[]
   levelFilters: LevelCode[]
   onlyDifficult: boolean
+  showBroken: boolean
+  displayMode: DisplayMode
   orderMode: OrderMode
   scrambleNonce: number
   expandedQuestionId: string | null
@@ -91,6 +94,8 @@ export interface WorkspaceFilterState {
   paperFilters: PaperCode[]
   levelFilters: LevelCode[]
   onlyDifficult: boolean
+  showBroken: boolean
+  displayMode: DisplayMode
   orderMode: OrderMode
   scrambleNonce: number
   expandedQuestionId: string | null

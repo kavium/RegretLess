@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyQuestionFilters, buildCanonicalQuestionSequence, orderQuestionIds } from '../src/lib/questions'
+import { applyQuestionFilters, buildCanonicalQuestionSequence, computeBrokenQuestionIds, extractMarksLabel, orderQuestionIds } from '../src/lib/questions'
 import { buildSyllabusIndex } from '../src/lib/selection'
 import type { SubjectBundle } from '../src/types'
 
@@ -130,14 +130,65 @@ describe('question ordering', () => {
           paperFilters: ['1A'],
           levelFilters: ['HL'],
           onlyDifficult: true,
+          showBroken: false,
+          displayMode: 'tags',
           orderMode: 'source',
           scrambleNonce: 0,
           expandedQuestionId: null,
         },
+        new Set(),
         {
           q4: { completed: false, difficult: true, updatedAt: 'now' },
         },
       ),
     ).toEqual(['q4'])
+  })
+
+  it('detects leaf questions with missing earlier siblings or subparts', () => {
+    const brokenBundle: SubjectBundle = {
+      ...bundle,
+      subject: { id: 'physics-broken-detection', name: 'Physics' },
+      questions: [
+        { ...bundle.questions[0], questionId: 'family-a', referenceCode: 'FAM.a', questionNumber: 'a' },
+        { ...bundle.questions[0], questionId: 'family-c', referenceCode: 'FAM.c', questionNumber: 'c' },
+        { ...bundle.questions[0], questionId: 'sub-a', referenceCode: 'SUB.a', questionNumber: 'a' },
+        { ...bundle.questions[0], questionId: 'sub-b-ii', referenceCode: 'SUB.b.ii', questionNumber: 'b.ii' },
+        { ...bundle.questions[0], questionId: 'numeric', referenceCode: 'NUM.1', questionNumber: '1' },
+      ],
+    }
+
+    expect(computeBrokenQuestionIds(brokenBundle)).toEqual(new Set(['family-c', 'sub-b-ii']))
+  })
+
+  it('keeps difficult broken questions visible when only difficult is enabled', () => {
+    const ids = ['q1', 'q2', 'q3']
+    const filters = {
+      paperFilters: ['1A', '1B', '1', '2', '3'],
+      levelFilters: ['SL', 'HL'],
+      onlyDifficult: true,
+      showBroken: false,
+      displayMode: 'tags' as const,
+      orderMode: 'source' as const,
+      scrambleNonce: 0,
+      expandedQuestionId: null,
+    }
+
+    expect(
+      applyQuestionFilters(
+        bundle,
+        ids,
+        filters,
+        new Set(['q1', 'q2']),
+        {
+          q1: { completed: false, difficult: true, updatedAt: 'now' },
+          q2: { completed: false, difficult: false, updatedAt: 'now' },
+        },
+      ),
+    ).toEqual(['q1'])
+  })
+
+  it('extracts the final literal mark count from markscheme html', () => {
+    expect(extractMarksLabel('<p>step</p><p>[1 mark]</p><p>[ 2 marks ]</p>')).toBe('[ 2 marks ]')
+    expect(extractMarksLabel('<p>no count</p>')).toBeNull()
   })
 })

@@ -63,6 +63,8 @@ export function parseWorkspaceFilters(searchParams: URLSearchParams): WorkspaceF
     paperFilters: parsePapers(searchParams.get('papers')),
     levelFilters: parseLevels(searchParams.get('levels')),
     onlyDifficult: searchParams.get('difficult') === '1',
+    showBroken: searchParams.get('broken') === '1',
+    displayMode: searchParams.get('display') === 'numbered' ? 'numbered' : 'tags',
     orderMode,
     scrambleNonce: Number.isSafeInteger(scrambleNonce) && scrambleNonce >= 0 ? scrambleNonce : 0,
     expandedQuestionId: parsedExpanded?.success ? parsedExpanded.data : null,
@@ -86,6 +88,14 @@ export function buildWorkspacePath(
 
   if (filters.onlyDifficult) {
     params.set('difficult', '1')
+  }
+
+  if (filters.showBroken) {
+    params.set('broken', '1')
+  }
+
+  if (filters.displayMode === 'numbered') {
+    params.set('display', 'numbered')
   }
 
   params.set('order', filters.orderMode)

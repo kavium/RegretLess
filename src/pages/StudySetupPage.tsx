@@ -110,6 +110,8 @@ export function StudySetupPage() {
     paperFilters: ['1A', '1B', '1', '2', '3'],
     levelFilters: ['SL', 'HL'],
     onlyDifficult: false,
+    showBroken: false,
+    displayMode: 'tags',
     orderMode: 'source',
     scrambleNonce: 0,
     expandedQuestionId: null,

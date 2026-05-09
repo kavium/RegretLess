@@ -125,6 +125,8 @@ function sanitizeResumeState(value: unknown): WorkspaceState | null {
   const selection = candidate.selection as WorkspaceState['selection']
   const paperFilters = candidate.paperFilters as WorkspaceState['paperFilters']
   const levelFilters = candidate.levelFilters as WorkspaceState['levelFilters']
+  const showBroken = typeof candidate.showBroken === 'boolean' ? candidate.showBroken : false
+  const displayMode = candidate.displayMode === 'numbered' ? 'numbered' : 'tags'
   const subjectId = candidate.subjectId as string
   const workspaceUrl = candidate.workspaceUrl as string
   const summaryLabel = candidate.summaryLabel as string
@@ -143,6 +145,8 @@ function sanitizeResumeState(value: unknown): WorkspaceState | null {
     ),
     levelFilters: levelFilters.filter((value): value is WorkspaceState['levelFilters'][number] => value === 'SL' || value === 'HL'),
     onlyDifficult: candidate.onlyDifficult,
+    showBroken,
+    displayMode,
     orderMode: candidate.orderMode,
     scrambleNonce,
     expandedQuestionId,

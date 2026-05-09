@@ -80,6 +80,7 @@
 .ws__q-tag--sky { background: var(--sky); color: var(--ink); border-color: var(--ink); }
 .ws__q-tag--done { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .ws__q-tag--hard { background: #c64f3a; color: var(--paper); border-color: #8a3324; }
+.ws__q-tag--broken { background: #4a4a4a; color: #fafafa; border-color: #2a2a2a; }
 .ws__q-crumbs { font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; color: var(--ink-soft); margin: 0; line-height: 1.4; }
 .ws__q-actions { display: flex; gap: 8px; align-items: center; }
 .ws__icon-btn { width: 38px; height: 38px; display: grid; place-items: center; background: var(--paper); border: 1px solid var(--ink); color: var(--ink); border-radius: 999px; cursor: pointer; transition: background .15s, color .15s, transform .15s; }
@@ -92,8 +93,21 @@
 .ws__q-detail { padding: 18px 22px 22px; border-top: 1px dashed var(--line); margin: 0 22px; }
 .ws__q-question { font-family: 'Cormorant Garamond', serif; font-size: 18px; line-height: 1.65; color: var(--ink); padding: 18px 22px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; }
 .ws__q-question b { font-weight: 500; color: var(--gold); font-style: italic; }
+.ws__reveal-row { display: inline-flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
+.ws__reveal-row .ws__q-reveal { margin-top: 0; }
 .ws__q-reveal { margin-top: 16px; display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; background: var(--ink); color: var(--paper); border: 1px solid var(--ink); font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 16px; cursor: pointer; border-radius: 999px; transition: background .15s; }
 .ws__q-reveal:hover { background: var(--gold); border-color: var(--gold); }
+.ws__q-marks {
+  font-family: 'Karla', sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+}
 .ws__ms { margin-top: 16px; padding: 18px 22px; background: linear-gradient(180deg, var(--sage) 0%, var(--paper-card) 100%); border: 1px solid var(--ink); border-radius: 8px; font-family: 'Cormorant Garamond', serif; font-size: 17px; line-height: 1.65; color: var(--ink); position: relative; overflow-x: auto; }
 .ws__ms::before { content: '— mark scheme —'; position: absolute; top: -10px; left: 18px; background: var(--paper); padding: 0 10px; font-family: 'Caveat', cursive; font-size: 16px; color: var(--gold); }
 .ws__ms b { font-weight: 500; color: var(--ink); font-style: italic; }

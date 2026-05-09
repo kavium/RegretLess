@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronDown, ChevronLeft, Flag, RefreshCw, Shuffle, SlidersHorizontal, BookOpen, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronLeft, Flag, RefreshCw, Shuffle, SlidersHorizontal, BookOpen, X } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -7,7 +7,7 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'reac
 import { SafeHtml } from '../components/SafeHtml'
 import { loadQuestionDetail } from '../lib/data-client'
 import { useDataContext } from '../lib/data-context'
-import { applyQuestionFilters, buildCanonicalQuestionSequence, createQuestionMap, describeQuestion, getAvailableLevels, getAvailablePapers, orderQuestionIds } from '../lib/questions'
+import { applyQuestionFilters, buildCanonicalQuestionSequence, computeBrokenQuestionIds, createQuestionMap, describeQuestion, extractMarksLabel, getAvailableLevels, getAvailablePapers, orderQuestionIds } from '../lib/questions'
 import { buildSyllabusIndex, getSelectionLabels } from '../lib/selection'
 import { getResumeState, getUserQuestionState, setResumeState, setUserQuestionState } from '../lib/storage'
 import { useSubjectBundle } from '../lib/use-subject-bundle'
@@ -164,11 +164,18 @@ export function WorkspacePage() {
   )
   const filters = useMemo(() => parseWorkspaceFilters(searchParams), [searchParams])
   const questionMap = useMemo(() => (bundle ? createQuestionMap(bundle) : new Map()), [bundle])
+  const brokenIds = useMemo(() => (bundle ? computeBrokenQuestionIds(bundle) : new Set<string>()), [bundle])
 
   const canonicalQuestionIds = useMemo(() => {
     if (!bundle || !selection || !syllabusIndex) return []
     return buildCanonicalQuestionSequence(bundle, selection, syllabusIndex)
   }, [bundle, selection, syllabusIndex])
+
+  const numberByQuestionId = useMemo(() => {
+    const map = new Map<string, number>()
+    canonicalQuestionIds.forEach((id, index) => map.set(id, index + 1))
+    return map
+  }, [canonicalQuestionIds])
 
   const orderKey = useMemo(
     () =>
@@ -178,10 +185,11 @@ export function WorkspacePage() {
         filters.paperFilters.join(','),
         filters.levelFilters.join(','),
         filters.onlyDifficult ? '1' : '0',
+        filters.showBroken ? '1' : '0',
         filters.orderMode,
         filters.scrambleNonce,
       ].join('|'),
-    [subjectId, searchParams, filters.paperFilters, filters.levelFilters, filters.onlyDifficult, filters.orderMode, filters.scrambleNonce],
+    [subjectId, searchParams, filters.paperFilters, filters.levelFilters, filters.onlyDifficult, filters.showBroken, filters.orderMode, filters.scrambleNonce],
   )
 
   const [questionUiState, setQuestionUiState] = useState<QuestionUiState>(() => ({
@@ -204,13 +212,13 @@ export function WorkspacePage() {
   const visibleQuestionIds = useMemo(() => {
     if (!bundle) return []
     return orderQuestionIds(
-      applyQuestionFilters(bundle, canonicalQuestionIds, filters, userState, questionMap),
+      applyQuestionFilters(bundle, canonicalQuestionIds, filters, brokenIds, userState, questionMap),
       bundle,
       questionUi.completedSnapshot,
       filters.orderMode,
       filters.scrambleNonce,
     )
-  }, [bundle, canonicalQuestionIds, filters, userState, questionMap, questionUi])
+  }, [bundle, canonicalQuestionIds, filters, brokenIds, userState, questionMap, questionUi])
 
   const availablePapers = useMemo(() => (bundle ? getAvailablePapers(bundle) : []), [bundle])
   const availableLevels = useMemo(() => (bundle ? getAvailableLevels(bundle) : []), [bundle])
@@ -236,7 +244,7 @@ export function WorkspacePage() {
   useEffect(() => {
     if (!bundle || !selection || !subjectId) return
 
-    const summaryLabel = `${bundle.subject.name} -> ${selectionLabels.join(', ') || 'No units'} -> ${filters.paperFilters.join(', ')} + ${filters.levelFilters.join(', ')}${filters.onlyDifficult ? ' + Difficult only' : ''}`
+    const summaryLabel = `${bundle.subject.name} -> ${selectionLabels.join(', ') || 'No units'} -> ${filters.paperFilters.join(', ')} + ${filters.levelFilters.join(', ')}${filters.onlyDifficult ? ' + Difficult only' : ''}${filters.showBroken ? ' + Broken only' : ''}${filters.displayMode === 'numbered' ? ' + Numbered' : ''}`
     const workspaceUrl = buildWorkspacePath(subjectId, selection, filters)
 
     const persist = () => {
@@ -248,6 +256,8 @@ export function WorkspacePage() {
         paperFilters: filters.paperFilters,
         levelFilters: filters.levelFilters,
         onlyDifficult: filters.onlyDifficult,
+        showBroken: filters.showBroken,
+        displayMode: filters.displayMode,
         orderMode: filters.orderMode,
         scrambleNonce: filters.scrambleNonce,
         expandedQuestionId: filters.expandedQuestionId,
@@ -393,6 +403,13 @@ export function WorkspacePage() {
           >
             <Flag size={12} /> Only difficult
           </button>
+          <button
+            type="button"
+            className={`ws__chip${filters.showBroken ? ' is-active' : ''}`}
+            onClick={() => updateFilters({ ...filters, showBroken: !filters.showBroken })}
+          >
+            <AlertTriangle size={12} /> Broken
+          </button>
         </div>
 
         <div className="ws__tool-group">
@@ -410,6 +427,24 @@ export function WorkspacePage() {
             onClick={() => updateFilters({ ...filters, orderMode: 'scrambled', scrambleNonce: filters.scrambleNonce + 1 })}
           >
             <Shuffle size={12} /> Scrambled
+          </button>
+        </div>
+
+        <div className="ws__tool-group">
+          <span className="ws__tool-label">display</span>
+          <button
+            type="button"
+            className={`ws__chip${filters.displayMode === 'tags' ? ' is-active' : ''}`}
+            onClick={() => updateFilters({ ...filters, displayMode: 'tags' })}
+          >
+            Tags
+          </button>
+          <button
+            type="button"
+            className={`ws__chip${filters.displayMode === 'numbered' ? ' is-active' : ''}`}
+            onClick={() => updateFilters({ ...filters, displayMode: 'numbered' })}
+          >
+            Numbered
           </button>
         </div>
 
@@ -447,10 +482,15 @@ export function WorkspacePage() {
                     <span className="ws__q-ref">{question.referenceCode}</span>
                     <span className={`ws__q-tag ws__q-tag--${paperTint}`}>{question.paper === '2' ? 'Paper 2' : `Paper ${question.paper}`}</span>
                     <span className="ws__q-tag ws__q-tag--sage">{question.level}</span>
+                    {brokenIds.has(questionId) ? <span className="ws__q-tag ws__q-tag--broken">Broken</span> : null}
                     {qs?.completed ? <span className="ws__q-tag ws__q-tag--done"><CheckCircle2 size={10} />completed</span> : null}
                     {qs?.difficult ? <span className="ws__q-tag ws__q-tag--hard"><Flag size={10} />difficult</span> : null}
                   </div>
-                  <p className="ws__q-crumbs">{describeQuestion(question)}</p>
+                  {filters.displayMode === 'numbered' ? (
+                    <p className="ws__q-crumbs ws__q-crumbs--numbered">Q{numberByQuestionId.get(questionId) ?? '?'}</p>
+                  ) : (
+                    <p className="ws__q-crumbs">{describeQuestion(question)}</p>
+                  )}
                 </button>
 
                 <div className="ws__q-actions">
@@ -523,34 +563,38 @@ export function WorkspacePage() {
                         </div>
                       )
                     }
+                    const marksLabel = extractMarksLabel(detail.markschemeHtml)
                     return (
                       <>
                         <SafeHtml className="ws__q-question" html={detail.questionHtml} />
-                        <button
-                          type="button"
-                          className="ws__q-reveal"
-                          onClick={() =>
-                            setQuestionUiState((cur) => {
-                              const base =
-                                cur.orderKey === orderKey
-                                  ? cur
-                                  : {
-                                      orderKey,
-                                      completedSnapshot: questionUi.completedSnapshot,
-                                      revealedMs: {},
-                                    }
-                              return {
-                                ...base,
-                                revealedMs: {
-                                  ...base.revealedMs,
-                                  [questionId]: !base.revealedMs[questionId],
-                                },
-                              }
-                            })
-                          }
-                        >
-                          <BookOpen size={14} /> {msRevealed ? 'hide mark scheme' : 'reveal mark scheme'}
-                        </button>
+                        <div className="ws__reveal-row">
+                          <button
+                            type="button"
+                            className="ws__q-reveal"
+                            onClick={() =>
+                              setQuestionUiState((cur) => {
+                                const base =
+                                  cur.orderKey === orderKey
+                                    ? cur
+                                    : {
+                                        orderKey,
+                                        completedSnapshot: questionUi.completedSnapshot,
+                                        revealedMs: {},
+                                      }
+                                return {
+                                  ...base,
+                                  revealedMs: {
+                                    ...base.revealedMs,
+                                    [questionId]: !base.revealedMs[questionId],
+                                  },
+                                }
+                              })
+                            }
+                          >
+                            <BookOpen size={14} /> {msRevealed ? 'hide mark scheme' : 'reveal mark scheme'}
+                          </button>
+                          {marksLabel ? <span className="ws__q-marks">{marksLabel}</span> : null}
+                        </div>
                         {msRevealed ? <SafeHtml className="ws__ms" html={detail.markschemeHtml} /> : null}
                       </>
                     )
