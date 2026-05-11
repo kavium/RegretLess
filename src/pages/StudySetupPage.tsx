@@ -14,6 +14,7 @@ import {
 import { buildWorkspacePath, parseSelection, serializeSelection } from '../lib/url-state'
 import type { SyllabusIndex } from '../lib/selection'
 import type { NormalizedSelection, SyllabusNode, WorkspaceFilterState } from '../types'
+import { NavLinks } from '../components/NavLinks'
 import './StudySetupPage.css'
 
 const TINTS = ['rose', 'butter', 'sage', 'sky'] as const
@@ -134,6 +135,7 @@ export function StudySetupPage() {
             <span className="setup__brand-pipe" />
             <span className="setup__brand-name">RegretLess · {bundle.subject.name}</span>
           </div>
+          <NavLinks />
           <div className="setup__masthead-meta">
             <Link to="/" className="setup__back"><ChevronLeft size={14} /> all subjects</Link>
           </div>

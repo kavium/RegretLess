@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { RefreshCw } from 'lucide-react'
 import { useDataContext } from '../lib/data-context'
+import { formatPaperLabel, getSubjectCardPaperCoverage } from '../lib/paper-display'
 import { useRefreshControl } from '../lib/use-refresh-control'
+import { NavLinks } from '../components/NavLinks'
 import './SubjectPickerPage.css'
 
 const TINTS = ['rose', 'butter', 'sage', 'sky'] as const
@@ -43,8 +45,17 @@ function CountdownCard() {
 export function SubjectPickerPage() {
   const { manifest } = useDataContext()
   const { refreshState, handleRefresh, label } = useRefreshControl()
+  const location = useLocation()
+  const shelvesRef = useRef<HTMLElement | null>(null)
   const subjects = manifest?.subjects ?? []
   const totalQ = subjects.reduce((s, x) => s + x.questionCount, 0)
+
+  useEffect(() => {
+    const target = (location.state as { scrollTo?: string } | null)?.scrollTo
+    if (target === 'shelves' && shelvesRef.current) {
+      shelvesRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [location.key, location.state])
 
   return (
     <div className="picker">
@@ -57,6 +68,7 @@ export function SubjectPickerPage() {
             <span className="picker__brand-pipe" />
             <span className="picker__brand-name">RegretLess</span>
           </div>
+          <NavLinks />
           <div className="picker__masthead-meta">
             <span>{subjects.length} subjects · {totalQ.toLocaleString()} questions</span>
             <button type="button" className="picker__refresh" onClick={handleRefresh}>
@@ -83,7 +95,7 @@ export function SubjectPickerPage() {
         </div>
       </header>
 
-      <section className="picker__shelves">
+      <section className="picker__shelves" id="shelves" ref={shelvesRef}>
         {subjects.map((s, i) => {
           const tint = TINTS[i % TINTS.length]
           const shortName = s.name.split(':')[0].trim()
@@ -94,8 +106,8 @@ export function SubjectPickerPage() {
               </div>
               <h3 className="picker__vol-name">{s.name}</h3>
               <div className="picker__vol-tags">
-                {(s.paperCoverage && s.paperCoverage.length ? s.paperCoverage : ['1A', '2', '3']).map((p) => (
-                  <span key={p} className="picker__vol-tag">{p === '2' ? 'Paper 2' : `Paper ${p}`}</span>
+                {getSubjectCardPaperCoverage(s).map((p, _index, papers) => (
+                  <span key={p} className="picker__vol-tag">{formatPaperLabel(p, s, papers)}</span>
                 ))}
               </div>
               <div className="picker__vol-foot">

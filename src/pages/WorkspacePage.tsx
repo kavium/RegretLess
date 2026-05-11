@@ -5,8 +5,10 @@ import { createPortal } from 'react-dom'
 import { useWindowVirtualizer } from '@tanstack/react-virtual'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { SafeHtml } from '../components/SafeHtml'
+import { NavLinks } from '../components/NavLinks'
 import { loadQuestionDetail } from '../lib/data-client'
 import { useDataContext } from '../lib/data-context'
+import { formatPaperLabel } from '../lib/paper-display'
 import { applyQuestionFilters, buildCanonicalQuestionSequence, computeBrokenQuestionIds, createQuestionMap, describeQuestion, extractMarksLabel, getAvailableLevels, getAvailablePapers, orderQuestionIds } from '../lib/questions'
 import { buildSyllabusIndex, getSelectionLabels } from '../lib/selection'
 import { getResumeState, getUserQuestionState, setResumeState, setUserQuestionState } from '../lib/storage'
@@ -248,7 +250,8 @@ export function WorkspacePage() {
   useEffect(() => {
     if (!bundle || !selection || !subjectId) return
 
-    const summaryLabel = `${bundle.subject.name} -> ${selectionLabels.join(', ') || 'No units'} -> ${filters.paperFilters.join(', ')} + ${filters.levelFilters.join(', ')}${filters.onlyDifficult ? ' + Difficult only' : ''}${filters.showBroken ? ' + Broken only' : ''}${filters.displayMode === 'numbered' ? ' + Numbered' : ''}`
+    const paperSummary = filters.paperFilters.map((paper) => formatPaperLabel(paper, bundle.subject, availablePapers)).join(', ')
+    const summaryLabel = `${bundle.subject.name} -> ${selectionLabels.join(', ') || 'No units'} -> ${paperSummary} + ${filters.levelFilters.join(', ')}${filters.onlyDifficult ? ' + Difficult only' : ''}${filters.showBroken ? ' + Broken only' : ''}${filters.displayMode === 'numbered' ? ' + Numbered' : ''}`
     const workspaceUrl = buildWorkspacePath(subjectId, selection, filters)
 
     const persist = () => {
@@ -283,7 +286,7 @@ export function WorkspacePage() {
       if (frame) window.cancelAnimationFrame(frame)
       window.removeEventListener('scroll', onScroll)
     }
-  }, [bundle, filters, selection, selectionLabels, subjectId])
+  }, [availablePapers, bundle, filters, selection, selectionLabels, subjectId])
 
   useEffect(() => {
     if (restoreAttempted.current || !bundle || !selection || !subjectId) return
@@ -342,6 +345,7 @@ export function WorkspacePage() {
             <span className="ws__brand-pipe" />
             <span className="ws__brand-name">RegretLess · Workspace</span>
           </div>
+          <NavLinks />
           <div className="ws__masthead-meta">
             <button
               type="button"
@@ -379,7 +383,7 @@ export function WorkspacePage() {
               className={`ws__chip${filters.paperFilters.includes(paper) ? ' is-active' : ''}`}
               onClick={() => updateFilters({ ...filters, paperFilters: toggleValue(filters.paperFilters, paper as PaperCode, availablePapers) })}
             >
-              {paper === 'unknown' ? 'Uncategorized' : paper === '2' ? 'Paper 2' : `Paper ${paper}`}
+              {formatPaperLabel(paper, bundle.subject, availablePapers)}
             </button>
           ))}
         </div>
@@ -491,7 +495,7 @@ export function WorkspacePage() {
                 >
                   <div className="ws__q-headline">
                     <span className="ws__q-ref">{question.referenceCode}</span>
-                    <span className={`ws__q-tag ws__q-tag--${paperTint}`}>{question.paper === '2' ? 'Paper 2' : `Paper ${question.paper}`}</span>
+                    <span className={`ws__q-tag ws__q-tag--${paperTint}`}>{formatPaperLabel(question.paper, bundle.subject, availablePapers)}</span>
                     <span className="ws__q-tag ws__q-tag--sage">{question.level}</span>
                     {brokenIds.has(questionId) ? <span className="ws__q-tag ws__q-tag--broken">Broken</span> : null}
                     {qs?.completed ? <span className="ws__q-tag ws__q-tag--done"><CheckCircle2 size={10} />completed</span> : null}
