@@ -1,5 +1,6 @@
 export type PaperCode = '1A' | '1B' | '1' | '2' | '3' | 'unknown'
 export type LevelCode = 'SL' | 'HL'
+export type YearFilterCode = `${number}` | 'specimen'
 export type OrderMode = 'source' | 'scrambled'
 export type DisplayMode = 'tags' | 'numbered'
 export type SyllabusNodeKind = 'umbrella' | 'subunit'
@@ -80,6 +81,7 @@ export interface WorkspaceState {
   selection: NormalizedSelection
   paperFilters: PaperCode[]
   levelFilters: LevelCode[]
+  yearFilters: YearFilterCode[]
   onlyDifficult: boolean
   showBroken: boolean
   displayMode: DisplayMode
@@ -93,6 +95,7 @@ export interface WorkspaceState {
 export interface WorkspaceFilterState {
   paperFilters: PaperCode[]
   levelFilters: LevelCode[]
+  yearFilters: YearFilterCode[]
   onlyDifficult: boolean
   showBroken: boolean
   displayMode: DisplayMode

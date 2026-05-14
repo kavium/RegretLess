@@ -1,4 +1,4 @@
-import type { LevelCode, NormalizedSelection, OrderMode, PaperCode, WorkspaceFilterState } from '../types'
+import type { LevelCode, NormalizedSelection, OrderMode, PaperCode, WorkspaceFilterState, YearFilterCode } from '../types'
 import type { SyllabusIndex } from './selection'
 import { QuestionIdSchema } from './schemas'
 import { emptySelection, normalizeSelection } from './selection'
@@ -52,6 +52,19 @@ function parseLevels(value: string | null): LevelCode[] {
   return entries.length ? entries : fallback
 }
 
+function parseYears(value: string | null): YearFilterCode[] {
+  if (!value) {
+    return []
+  }
+
+  const entries = value
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry): entry is YearFilterCode => entry === 'specimen' || /^20\d{2}$/.test(entry))
+
+  return [...new Set(entries)]
+}
+
 export function parseWorkspaceFilters(searchParams: URLSearchParams): WorkspaceFilterState {
   const order = searchParams.get('order')
   const orderMode: OrderMode = order === 'scrambled' ? 'scrambled' : 'source'
@@ -62,6 +75,7 @@ export function parseWorkspaceFilters(searchParams: URLSearchParams): WorkspaceF
   return {
     paperFilters: parsePapers(searchParams.get('papers')),
     levelFilters: parseLevels(searchParams.get('levels')),
+    yearFilters: parseYears(searchParams.get('years')),
     onlyDifficult: searchParams.get('difficult') === '1',
     showBroken: searchParams.get('broken') === '1',
     displayMode: searchParams.get('display') === 'numbered' ? 'numbered' : 'tags',
@@ -85,6 +99,10 @@ export function buildWorkspacePath(
 
   params.set('papers', filters.paperFilters.join(','))
   params.set('levels', filters.levelFilters.join(','))
+
+  if (filters.yearFilters.length) {
+    params.set('years', filters.yearFilters.join(','))
+  }
 
   if (filters.onlyDifficult) {
     params.set('difficult', '1')

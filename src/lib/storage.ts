@@ -125,6 +125,9 @@ function sanitizeResumeState(value: unknown): WorkspaceState | null {
   const selection = candidate.selection as WorkspaceState['selection']
   const paperFilters = candidate.paperFilters as WorkspaceState['paperFilters']
   const levelFilters = candidate.levelFilters as WorkspaceState['levelFilters']
+  const yearFilters = Array.isArray(candidate.yearFilters)
+    ? candidate.yearFilters as WorkspaceState['yearFilters']
+    : []
   const showBroken = typeof candidate.showBroken === 'boolean' ? candidate.showBroken : false
   const displayMode = candidate.displayMode === 'numbered' ? 'numbered' : 'tags'
   const subjectId = candidate.subjectId as string
@@ -144,6 +147,9 @@ function sanitizeResumeState(value: unknown): WorkspaceState | null {
       value === '1A' || value === '1B' || value === '1' || value === '2' || value === '3',
     ),
     levelFilters: levelFilters.filter((value): value is WorkspaceState['levelFilters'][number] => value === 'SL' || value === 'HL'),
+    yearFilters: yearFilters.filter((value): value is WorkspaceState['yearFilters'][number] =>
+      value === 'specimen' || (typeof value === 'string' && /^20\d{2}$/.test(value)),
+    ),
     onlyDifficult: candidate.onlyDifficult,
     showBroken,
     displayMode,

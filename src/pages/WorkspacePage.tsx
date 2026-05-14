@@ -9,12 +9,12 @@ import { NavLinks } from '../components/NavLinks'
 import { loadQuestionDetail } from '../lib/data-client'
 import { useDataContext } from '../lib/data-context'
 import { formatPaperLabel } from '../lib/paper-display'
-import { applyQuestionFilters, buildCanonicalQuestionSequence, computeBrokenQuestionIds, createQuestionMap, describeQuestion, extractMarksLabel, getAvailableLevels, getAvailablePapers, orderQuestionIds } from '../lib/questions'
+import { applyQuestionFilters, buildCanonicalQuestionSequence, computeBrokenQuestionIds, createQuestionMap, describeQuestion, extractMarksLabel, formatYearFilterLabel, getAvailableLevels, getAvailablePapers, getAvailableYears, orderQuestionIds } from '../lib/questions'
 import { buildSyllabusIndex, getSelectionLabels } from '../lib/selection'
 import { getResumeState, getUserQuestionState, setResumeState, setUserQuestionState } from '../lib/storage'
 import { useSubjectBundle } from '../lib/use-subject-bundle'
 import { buildWorkspacePath, parseSelection, parseWorkspaceFilters } from '../lib/url-state'
-import type { LevelCode, PaperCode, QuestionDetail, WorkspaceFilterState } from '../types'
+import type { LevelCode, PaperCode, QuestionDetail, WorkspaceFilterState, YearFilterCode } from '../types'
 import './WorkspacePage.css'
 
 const PAPER_TINTS: Record<string, 'rose' | 'butter' | 'sky'> = { '1A': 'rose', '1B': 'butter', '1': 'rose', '2': 'sky', '3': 'butter' }
@@ -107,6 +107,16 @@ function toggleValue<T extends string>(items: T[], value: T, fallback: T[]) {
   return next.length ? next : fallback
 }
 
+function toggleYearValue(items: YearFilterCode[], value: YearFilterCode, fallback: YearFilterCode[]) {
+  return toggleValue(items.length ? items : fallback, value, fallback)
+}
+
+function yearDropdownLabel(filters: YearFilterCode[]) {
+  if (!filters.length) return 'All years'
+  if (filters.length === 1) return formatYearFilterLabel(filters[0])
+  return `${filters.length} years`
+}
+
 export function WorkspacePage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -121,6 +131,7 @@ export function WorkspacePage() {
   const [refreshState, setRefreshState] = useState<'idle' | 'working'>('idle')
   const [completedTip, setCompletedTip] = useState<{ id: string; anchor: HTMLElement } | null>(null)
   const [brokenTip, setBrokenTip] = useState<{ anchor: HTMLElement } | null>(null)
+  const [yearMenuAnchor, setYearMenuAnchor] = useState<HTMLElement | null>(null)
   const restoreAttempted = useRef(false)
   const detailAttemptsRef = useRef<Map<string, 'pending' | 'done' | 'failed'>>(new Map())
   const [retryTick, setRetryTick] = useState(0)
@@ -190,12 +201,13 @@ export function WorkspacePage() {
         searchParams.get('units') ?? '',
         filters.paperFilters.join(','),
         filters.levelFilters.join(','),
+        filters.yearFilters.join(','),
         filters.onlyDifficult ? '1' : '0',
         filters.showBroken ? '1' : '0',
         filters.orderMode,
         filters.scrambleNonce,
       ].join('|'),
-    [subjectId, searchParams, filters.paperFilters, filters.levelFilters, filters.onlyDifficult, filters.showBroken, filters.orderMode, filters.scrambleNonce],
+    [subjectId, searchParams, filters.paperFilters, filters.levelFilters, filters.yearFilters, filters.onlyDifficult, filters.showBroken, filters.orderMode, filters.scrambleNonce],
   )
 
   const [questionUiState, setQuestionUiState] = useState<QuestionUiState>(() => ({
@@ -228,6 +240,8 @@ export function WorkspacePage() {
 
   const availablePapers = useMemo(() => (bundle ? getAvailablePapers(bundle) : []), [bundle])
   const availableLevels = useMemo(() => (bundle ? getAvailableLevels(bundle) : []), [bundle])
+  const availableYears = useMemo(() => (bundle ? getAvailableYears(bundle) : []), [bundle])
+  const activeYearFilters = filters.yearFilters.length ? filters.yearFilters : availableYears
   const selectionLabels = useMemo(
     () => (selection && syllabusIndex ? getSelectionLabels(selection, syllabusIndex) : []),
     [selection, syllabusIndex],
@@ -251,7 +265,8 @@ export function WorkspacePage() {
     if (!bundle || !selection || !subjectId) return
 
     const paperSummary = filters.paperFilters.map((paper) => formatPaperLabel(paper, bundle.subject, availablePapers)).join(', ')
-    const summaryLabel = `${bundle.subject.name} -> ${selectionLabels.join(', ') || 'No units'} -> ${paperSummary} + ${filters.levelFilters.join(', ')}${filters.onlyDifficult ? ' + Difficult only' : ''}${filters.showBroken ? ' + Broken only' : ''}${filters.displayMode === 'numbered' ? ' + Numbered' : ''}`
+    const yearSummary = activeYearFilters.map(formatYearFilterLabel).join(', ')
+    const summaryLabel = `${bundle.subject.name} -> ${selectionLabels.join(', ') || 'No units'} -> ${paperSummary} + ${filters.levelFilters.join(', ')}${yearSummary ? ` + ${yearSummary}` : ''}${filters.onlyDifficult ? ' + Difficult only' : ''}${filters.showBroken ? ' + Broken only' : ''}${filters.displayMode === 'numbered' ? ' + Numbered' : ''}`
     const workspaceUrl = buildWorkspacePath(subjectId, selection, filters)
 
     const persist = () => {
@@ -262,6 +277,7 @@ export function WorkspacePage() {
         selection,
         paperFilters: filters.paperFilters,
         levelFilters: filters.levelFilters,
+        yearFilters: filters.yearFilters,
         onlyDifficult: filters.onlyDifficult,
         showBroken: filters.showBroken,
         displayMode: filters.displayMode,
@@ -286,7 +302,7 @@ export function WorkspacePage() {
       if (frame) window.cancelAnimationFrame(frame)
       window.removeEventListener('scroll', onScroll)
     }
-  }, [availablePapers, bundle, filters, selection, selectionLabels, subjectId])
+  }, [activeYearFilters, availablePapers, bundle, filters, selection, selectionLabels, subjectId])
 
   useEffect(() => {
     if (restoreAttempted.current || !bundle || !selection || !subjectId) return
@@ -320,6 +336,10 @@ export function WorkspacePage() {
 
   function updateFilters(next: WorkspaceFilterState) {
     navigate(buildWorkspacePath(subjectId!, selection!, next), { replace: true })
+  }
+
+  function toggleYearFilter(year: YearFilterCode) {
+    updateFilters({ ...filters, yearFilters: toggleYearValue(filters.yearFilters, year, availableYears) })
   }
 
   async function handleRefresh() {
@@ -401,6 +421,21 @@ export function WorkspacePage() {
             </button>
           ))}
         </div>
+
+        {availableYears.length ? (
+          <div className="ws__tool-group">
+            <span className="ws__tool-label">year</span>
+            <button
+              type="button"
+              className={`ws__chip ws__dropdown-toggle${filters.yearFilters.length ? ' is-active' : ''}`}
+              aria-expanded={Boolean(yearMenuAnchor)}
+              onClick={(event) => setYearMenuAnchor((current) => (current ? null : event.currentTarget))}
+            >
+              {yearDropdownLabel(filters.yearFilters)}
+              <ChevronDown size={12} />
+            </button>
+          </div>
+        ) : null}
 
         <div className="ws__tool-group">
           <span className="ws__tool-label">flags</span>
@@ -629,8 +664,90 @@ export function WorkspacePage() {
 
       {completedTip ? <WorkspaceTipBubble anchor={completedTip.anchor} message={COMPLETED_TIP_MESSAGE} onDismiss={() => setCompletedTip(null)} /> : null}
       {brokenTip ? <WorkspaceTipBubble anchor={brokenTip.anchor} message={BROKEN_TIP_MESSAGE} onDismiss={() => setBrokenTip(null)} /> : null}
+      {yearMenuAnchor ? (
+        <WorkspaceYearDropdown
+          anchor={yearMenuAnchor}
+          years={availableYears}
+          activeYears={activeYearFilters}
+          onToggle={toggleYearFilter}
+          onDismiss={() => setYearMenuAnchor(null)}
+        />
+      ) : null}
 
     </div>
+  )
+}
+
+function WorkspaceYearDropdown({
+  anchor,
+  years,
+  activeYears,
+  onToggle,
+  onDismiss,
+}: {
+  anchor: HTMLElement
+  years: YearFilterCode[]
+  activeYears: YearFilterCode[]
+  onToggle: (year: YearFilterCode) => void
+  onDismiss: () => void
+}) {
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+
+  useLayoutEffect(() => {
+    const update = () => {
+      const rect = anchor.getBoundingClientRect()
+      const menuW = menuRef.current?.offsetWidth ?? 180
+      const gap = 8
+      const left = Math.min(Math.max(8, rect.left), window.innerWidth - menuW - 8)
+      setPos({ top: rect.bottom + gap, left })
+    }
+    update()
+    const raf = requestAnimationFrame(update)
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [anchor])
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null
+      if (target && (anchor.contains(target) || menuRef.current?.contains(target))) return
+      onDismiss()
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onDismiss()
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [anchor, onDismiss])
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="ws__dropdown-menu"
+      style={pos ? { top: pos.top, left: pos.left } : { top: -9999, left: 0, visibility: 'hidden' }}
+    >
+      {years.map((year) => (
+        <button
+          key={year}
+          type="button"
+          className={`ws__chip${activeYears.includes(year) ? ' is-active' : ''}`}
+          onClick={() => onToggle(year)}
+        >
+          {formatYearFilterLabel(year)}
+        </button>
+      ))}
+    </div>,
+    document.body,
   )
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyQuestionFilters, buildCanonicalQuestionSequence, computeBrokenQuestionIds, extractMarksLabel, orderQuestionIds } from '../src/lib/questions'
+import { applyQuestionFilters, buildCanonicalQuestionSequence, computeBrokenQuestionIds, extractMarksLabel, getAvailableYears, getQuestionYearFilter, orderQuestionIds } from '../src/lib/questions'
 import { buildSyllabusIndex } from '../src/lib/selection'
 import type { SubjectBundle } from '../src/types'
 
@@ -129,6 +129,7 @@ describe('question ordering', () => {
         {
           paperFilters: ['1A'],
           levelFilters: ['HL'],
+          yearFilters: [],
           onlyDifficult: true,
           showBroken: false,
           displayMode: 'tags',
@@ -142,6 +143,41 @@ describe('question ordering', () => {
         },
       ),
     ).toEqual(['q4'])
+  })
+
+  it('filters by parsed year and groups non-year prefixes as specimen', () => {
+    const yearBundle: SubjectBundle = {
+      ...bundle,
+      questions: [
+        { ...bundle.questions[0], questionId: 'q1', referenceCode: '18M.1A.HL.TZ0.1' },
+        { ...bundle.questions[1], questionId: 'q2', referenceCode: '19N.2.SL.TZ0.2' },
+        { ...bundle.questions[2], questionId: 'q3', referenceCode: 'EXN.1B.SL.TZ0.3' },
+      ],
+    }
+    const ids = ['q1', 'q2', 'q3']
+
+    expect(getQuestionYearFilter(yearBundle.questions[0])).toBe('2018')
+    expect(getQuestionYearFilter(yearBundle.questions[2])).toBe('specimen')
+    expect(getAvailableYears(yearBundle)).toEqual(['2019', '2018', 'specimen'])
+    expect(
+      applyQuestionFilters(
+        yearBundle,
+        ids,
+        {
+          paperFilters: ['1A', '1B', '1', '2', '3'],
+          levelFilters: ['SL', 'HL'],
+          yearFilters: ['specimen'],
+          onlyDifficult: false,
+          showBroken: false,
+          displayMode: 'tags',
+          orderMode: 'source',
+          scrambleNonce: 0,
+          expandedQuestionId: null,
+        },
+        new Set(),
+        {},
+      ),
+    ).toEqual(['q3'])
   })
 
   it('detects leaf questions with missing earlier siblings or subparts', () => {
@@ -165,6 +201,7 @@ describe('question ordering', () => {
     const filters = {
       paperFilters: ['1A', '1B', '1', '2', '3'],
       levelFilters: ['SL', 'HL'],
+      yearFilters: [],
       onlyDifficult: true,
       showBroken: false,
       displayMode: 'tags' as const,

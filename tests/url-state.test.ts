@@ -6,6 +6,7 @@ describe('parseWorkspaceFilters', () => {
     const r = parseWorkspaceFilters(new URLSearchParams())
     expect(r.paperFilters.length).toBeGreaterThan(0)
     expect(r.levelFilters).toEqual(['SL', 'HL'])
+    expect(r.yearFilters).toEqual([])
     expect(r.orderMode).toBe('source')
     expect(r.scrambleNonce).toBe(0)
     expect(r.expandedQuestionId).toBeNull()
@@ -18,6 +19,11 @@ describe('parseWorkspaceFilters', () => {
     const r = parseWorkspaceFilters(new URLSearchParams('papers=zz,99&levels=foo,bar'))
     expect(r.paperFilters.length).toBeGreaterThan(0)
     expect(r.levelFilters).toEqual(['SL', 'HL'])
+  })
+
+  it('parses year filters and drops invalid year tokens', () => {
+    const r = parseWorkspaceFilters(new URLSearchParams('years=2024,specimen,EXN,18M,1999'))
+    expect(r.yearFilters).toEqual(['2024', 'specimen'])
   })
 
   it('coerces non-numeric shuffle to 0', () => {
@@ -57,6 +63,7 @@ describe('buildWorkspacePath', () => {
       {
         paperFilters: ['1A'],
         levelFilters: ['HL'],
+        yearFilters: ['2024', 'specimen'],
         onlyDifficult: false,
         showBroken: true,
         displayMode: 'numbered',
@@ -68,6 +75,7 @@ describe('buildWorkspacePath', () => {
 
     expect(path).toContain('broken=1')
     expect(path).toContain('display=numbered')
+    expect(path).toContain('years=2024%2Cspecimen')
 
     const defaultPath = buildWorkspacePath(
       'physics',
@@ -75,6 +83,7 @@ describe('buildWorkspacePath', () => {
       {
         paperFilters: ['1A'],
         levelFilters: ['HL'],
+        yearFilters: [],
         onlyDifficult: false,
         showBroken: false,
         displayMode: 'tags',
@@ -85,5 +94,6 @@ describe('buildWorkspacePath', () => {
     )
     expect(defaultPath).not.toContain('broken=')
     expect(defaultPath).not.toContain('display=')
+    expect(defaultPath).not.toContain('years=')
   })
 })

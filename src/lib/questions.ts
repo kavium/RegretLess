@@ -1,8 +1,9 @@
-import type { NormalizedSelection, OrderMode, PaperCode, QuestionRecord, SubjectBundle, UserQuestionStateMap, WorkspaceFilterState } from '../types'
+import type { NormalizedSelection, OrderMode, PaperCode, QuestionRecord, SubjectBundle, UserQuestionStateMap, WorkspaceFilterState, YearFilterCode } from '../types'
 import type { SyllabusIndex } from './selection'
 
 const PAPER_ORDER: PaperCode[] = ['1A', '1B', '1', '2', '3', 'unknown']
 const LEVEL_ORDER = ['SL', 'HL'] as const
+const YEAR_PREFIX_PATTERN = /^(\d{2})[MN]\b/i
 const QUESTION_PART_PATTERN = /^([a-z])(?:\.(i|ii|iii|iv|v|vi|vii|viii|ix|x))?$/
 const ROMAN_ORDER = new Map([
   ['i', 1],
@@ -197,6 +198,10 @@ export function applyQuestionFilters(
       return false
     }
 
+    if (filters.yearFilters.length > 0 && !filters.yearFilters.includes(getQuestionYearFilter(question))) {
+      return false
+    }
+
     const isBroken = brokenIds.has(questionId)
     if (filters.showBroken) {
       if (!isBroken) {
@@ -250,6 +255,23 @@ export function getAvailablePapers(bundle: SubjectBundle) {
 export function getAvailableLevels(bundle: SubjectBundle) {
   const levels = new Set(bundle.questions.map((question) => question.level))
   return LEVEL_ORDER.filter((level) => levels.has(level))
+}
+
+export function getQuestionYearFilter(question: Pick<QuestionRecord, 'referenceCode'>): YearFilterCode {
+  const match = YEAR_PREFIX_PATTERN.exec(question.referenceCode.trim())
+  return match ? (`20${match[1]}` as YearFilterCode) : 'specimen'
+}
+
+export function formatYearFilterLabel(year: YearFilterCode) {
+  return year === 'specimen' ? 'Specimen' : year
+}
+
+export function getAvailableYears(bundle: SubjectBundle): YearFilterCode[] {
+  const years = new Set(bundle.questions.map((question) => getQuestionYearFilter(question)))
+  const numericYears = [...years]
+    .filter((year) => year !== 'specimen')
+    .sort((left, right) => Number(right) - Number(left))
+  return years.has('specimen') ? [...numericYears, 'specimen'] : numericYears
 }
 
 export function describeQuestion(question: QuestionRecord) {
