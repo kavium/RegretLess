@@ -111,8 +111,8 @@ function toggleYearValue(items: YearFilterCode[], value: YearFilterCode, fallbac
   return toggleValue(items.length ? items : fallback, value, fallback)
 }
 
-function yearDropdownLabel(filters: YearFilterCode[]) {
-  if (!filters.length) return 'All years'
+function yearDropdownLabel(filters: YearFilterCode[], availableYears: YearFilterCode[]) {
+  if (!filters.length || filters.length === availableYears.length) return 'All years'
   if (filters.length === 1) return formatYearFilterLabel(filters[0])
   return `${filters.length} years`
 }
@@ -431,7 +431,7 @@ export function WorkspacePage() {
               aria-expanded={Boolean(yearMenuAnchor)}
               onClick={(event) => setYearMenuAnchor((current) => (current ? null : event.currentTarget))}
             >
-              {yearDropdownLabel(filters.yearFilters)}
+              {yearDropdownLabel(filters.yearFilters, availableYears)}
               <ChevronDown size={12} />
             </button>
           </div>
