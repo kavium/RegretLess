@@ -1,6 +1,6 @@
 import type { LevelCode, NormalizedSelection, OrderMode, PaperCode, WorkspaceFilterState, YearFilterCode } from '../types'
 import type { SyllabusIndex } from './selection'
-import { QuestionIdSchema } from './schemas'
+import { QuestionIdSchema, SubjectIdSchema } from './schemas'
 import { emptySelection, normalizeSelection } from './selection'
 
 export function serializeSelection(selection: NormalizedSelection) {
@@ -79,6 +79,7 @@ export function parseWorkspaceFilters(searchParams: URLSearchParams): WorkspaceF
     onlyDifficult: searchParams.get('difficult') === '1',
     showBroken: searchParams.get('broken') === '1',
     displayMode: searchParams.get('display') === 'numbered' ? 'numbered' : 'tags',
+    questionGroupingMode: searchParams.get('group') === 'full' ? 'full-question' : 'per-part',
     orderMode,
     scrambleNonce: Number.isSafeInteger(scrambleNonce) && scrambleNonce >= 0 ? scrambleNonce : 0,
     expandedQuestionId: parsedExpanded?.success ? parsedExpanded.data : null,
@@ -90,6 +91,11 @@ export function buildWorkspacePath(
   selection: NormalizedSelection,
   filters: WorkspaceFilterState,
 ) {
+  const parsedSubjectId = SubjectIdSchema.safeParse(subjectId)
+  if (!parsedSubjectId.success) {
+    throw new Error('Invalid subject id')
+  }
+
   const params = new URLSearchParams()
   const units = serializeSelection(selection)
 
@@ -116,6 +122,10 @@ export function buildWorkspacePath(
     params.set('display', 'numbered')
   }
 
+  if (filters.questionGroupingMode === 'full-question') {
+    params.set('group', 'full')
+  }
+
   params.set('order', filters.orderMode)
   params.set('shuffle', String(filters.scrambleNonce))
 
@@ -123,5 +133,5 @@ export function buildWorkspacePath(
     params.set('expanded', filters.expandedQuestionId)
   }
 
-  return `/subject/${subjectId}/workspace?${params.toString()}`
+  return `/subject/${parsedSubjectId.data}/workspace?${params.toString()}`
 }

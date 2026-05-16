@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyQuestionFilters, buildCanonicalQuestionSequence, computeBrokenQuestionIds, extractMarksLabel, getAvailableYears, getQuestionYearFilter, orderQuestionIds } from '../src/lib/questions'
+import { applyQuestionFilters, buildCanonicalQuestionSequence, buildQuestionRows, computeBrokenQuestionIds, extractMarkValue, extractMarksLabel, formatQuestionReferenceTitle, formatTotalMarksLabel, getAvailableYears, getQuestionYearFilter, orderQuestionIds } from '../src/lib/questions'
 import { buildSyllabusIndex } from '../src/lib/selection'
 import type { SubjectBundle } from '../src/types'
 
@@ -133,6 +133,7 @@ describe('question ordering', () => {
           onlyDifficult: true,
           showBroken: false,
           displayMode: 'tags',
+          questionGroupingMode: 'per-part',
           orderMode: 'source',
           scrambleNonce: 0,
           expandedQuestionId: null,
@@ -170,6 +171,7 @@ describe('question ordering', () => {
           onlyDifficult: false,
           showBroken: false,
           displayMode: 'tags',
+          questionGroupingMode: 'per-part',
           orderMode: 'source',
           scrambleNonce: 0,
           expandedQuestionId: null,
@@ -196,6 +198,27 @@ describe('question ordering', () => {
     expect(computeBrokenQuestionIds(brokenBundle)).toEqual(new Set(['family-c', 'sub-b-ii']))
   })
 
+  it('does not reuse broken-question results across new bundles with the same subject id', () => {
+    const firstBundle: SubjectBundle = {
+      ...bundle,
+      subject: { id: 'physics-cache-same-id', name: 'Physics' },
+      questions: [
+        { ...bundle.questions[0], questionId: 'first-a', referenceCode: 'FAM.a', questionNumber: 'a' },
+        { ...bundle.questions[0], questionId: 'first-c', referenceCode: 'FAM.c', questionNumber: 'c' },
+      ],
+    }
+    const secondBundle: SubjectBundle = {
+      ...firstBundle,
+      questions: [
+        { ...bundle.questions[0], questionId: 'second-a', referenceCode: 'FAM.a', questionNumber: 'a' },
+        { ...bundle.questions[0], questionId: 'second-b', referenceCode: 'FAM.b', questionNumber: 'b' },
+      ],
+    }
+
+    expect(computeBrokenQuestionIds(firstBundle)).toEqual(new Set(['first-c']))
+    expect(computeBrokenQuestionIds(secondBundle)).toEqual(new Set())
+  })
+
   it('keeps difficult broken questions visible when only difficult is enabled', () => {
     const ids = ['q1', 'q2', 'q3']
     const filters = {
@@ -205,6 +228,7 @@ describe('question ordering', () => {
       onlyDifficult: true,
       showBroken: false,
       displayMode: 'tags' as const,
+      questionGroupingMode: 'per-part' as const,
       orderMode: 'source' as const,
       scrambleNonce: 0,
       expandedQuestionId: null,
@@ -227,5 +251,97 @@ describe('question ordering', () => {
   it('extracts the final literal mark count from markscheme html', () => {
     expect(extractMarksLabel('<p>step</p><p>[1 mark]</p><p>[ 2 marks ]</p>')).toBe('[ 2 marks ]')
     expect(extractMarksLabel('<p>no count</p>')).toBeNull()
+    expect(extractMarkValue('[Maximum mark: 4]')).toBe(4)
+    expect(extractMarkValue('<p>[1 mark]</p><p>[ 2 marks ]</p>')).toBe(2)
+    expect(formatTotalMarksLabel(9)).toBe('Total 9 marks')
+  })
+
+  it('formats question references for display without changing stored codes', () => {
+    expect(formatQuestionReferenceTitle('21M.3.AHL.TZ2.2')).toBe('May 2021 | Paper 3 | Time Zone 2 | Question 2')
+    expect(formatQuestionReferenceTitle('24N.3.AHL.TZ0.1bii')).toBe('November 2024 | Paper 3 | Time Zone 0 | Question 1 b(ii)')
+    expect(formatQuestionReferenceTitle('24N.3.AHL.TZ0.1b.ii')).toBe('November 2024 | Paper 3 | Time Zone 0 | Question 1 b(ii)')
+    expect(formatQuestionReferenceTitle('not-a-standard-code')).toBe('not-a-standard-code')
+  })
+
+  it('combines non-broken sibling parts into full-question rows', () => {
+    const fullBundle: SubjectBundle = {
+      ...bundle,
+      subject: { id: 'physics-full-rows', name: 'Physics' },
+      questions: [
+        { ...bundle.questions[0], questionId: 'a', referenceCode: 'FAM.1a', questionNumber: 'a', marksAvailable: '[Maximum mark: 1]' },
+        { ...bundle.questions[0], questionId: 'b', referenceCode: 'FAM.1b', questionNumber: 'b', marksAvailable: '[Maximum mark: 2]' },
+        { ...bundle.questions[0], questionId: 'c-i', referenceCode: 'FAM.1c.i', questionNumber: 'c.i', marksAvailable: '[Maximum mark: 3]' },
+        { ...bundle.questions[0], questionId: 'c-iii', referenceCode: 'FAM.1c(iii)', questionNumber: 'c(iii)', marksAvailable: '[Maximum mark: 4]' },
+        { ...bundle.questions[0], questionId: 'd-ii', referenceCode: 'FAM.1dii', questionNumber: 'dii', marksAvailable: '[Maximum mark: 5]' },
+        { ...bundle.questions[0], questionId: 'numeric-1', referenceCode: 'P1.1', questionNumber: '1', marksAvailable: '[Maximum mark: 1]' },
+        { ...bundle.questions[0], questionId: 'numeric-2', referenceCode: 'P1.2', questionNumber: '2', marksAvailable: '[Maximum mark: 1]' },
+        { ...bundle.questions[0], questionId: 'paper3-a', referenceCode: '24N.3.AHL.TZ0.1a', questionNumber: 'a', marksAvailable: '[Maximum mark: 2]' },
+        { ...bundle.questions[0], questionId: 'paper3-b-i', referenceCode: '24N.3.AHL.TZ0.1bi', questionNumber: 'i', marksAvailable: '[Maximum mark: 1]' },
+        { ...bundle.questions[0], questionId: 'paper3-b-ii', referenceCode: '24N.3.AHL.TZ0.1bii', questionNumber: 'ii', marksAvailable: '[Maximum mark: 2]' },
+      ],
+    }
+    const rows = buildQuestionRows(
+      ['b', 'numeric-1', 'numeric-2'],
+      fullBundle,
+      {
+        paperFilters: ['1A', '1B', '1', '2', '3'],
+        levelFilters: ['SL', 'HL'],
+        yearFilters: [],
+        onlyDifficult: false,
+        showBroken: false,
+        displayMode: 'tags',
+        questionGroupingMode: 'full-question',
+        orderMode: 'source',
+        scrambleNonce: 0,
+        expandedQuestionId: null,
+      },
+      new Set(['c-iii']),
+    )
+    const paper3Rows = buildQuestionRows(
+      ['paper3-a'],
+      fullBundle,
+      {
+        paperFilters: ['1A', '1B', '1', '2', '3'],
+        levelFilters: ['SL', 'HL'],
+        yearFilters: [],
+        onlyDifficult: false,
+        showBroken: false,
+        displayMode: 'tags',
+        questionGroupingMode: 'full-question',
+        orderMode: 'source',
+        scrambleNonce: 0,
+        expandedQuestionId: null,
+      },
+      new Set(),
+    )
+
+    expect(rows).toEqual([
+      {
+        rowId: 'family:FAM.1',
+        representativeId: 'b',
+        questionIds: ['a', 'b', 'c-i', 'd-ii'],
+        isFullQuestion: true,
+      },
+      {
+        rowId: 'numeric-1',
+        representativeId: 'numeric-1',
+        questionIds: ['numeric-1'],
+        isFullQuestion: false,
+      },
+      {
+        rowId: 'numeric-2',
+        representativeId: 'numeric-2',
+        questionIds: ['numeric-2'],
+        isFullQuestion: false,
+      },
+    ])
+    expect(paper3Rows).toEqual([
+      {
+        rowId: 'family:24N.3.AHL.TZ0.1',
+        representativeId: 'paper3-a',
+        questionIds: ['paper3-a', 'paper3-b-i', 'paper3-b-ii'],
+        isFullQuestion: true,
+      },
+    ])
   })
 })

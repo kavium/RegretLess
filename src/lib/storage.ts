@@ -130,6 +130,7 @@ function sanitizeResumeState(value: unknown): WorkspaceState | null {
     : []
   const showBroken = typeof candidate.showBroken === 'boolean' ? candidate.showBroken : false
   const displayMode = candidate.displayMode === 'numbered' ? 'numbered' : 'tags'
+  const questionGroupingMode = candidate.questionGroupingMode === 'full-question' ? 'full-question' : 'per-part'
   const subjectId = candidate.subjectId as string
   const workspaceUrl = candidate.workspaceUrl as string
   const summaryLabel = candidate.summaryLabel as string
@@ -153,6 +154,7 @@ function sanitizeResumeState(value: unknown): WorkspaceState | null {
     onlyDifficult: candidate.onlyDifficult,
     showBroken,
     displayMode,
+    questionGroupingMode,
     orderMode: candidate.orderMode,
     scrambleNonce,
     expandedQuestionId,

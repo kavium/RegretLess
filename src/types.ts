@@ -3,6 +3,7 @@ export type LevelCode = 'SL' | 'HL'
 export type YearFilterCode = `${number}` | 'specimen'
 export type OrderMode = 'source' | 'scrambled'
 export type DisplayMode = 'tags' | 'numbered'
+export type QuestionGroupingMode = 'per-part' | 'full-question'
 export type SyllabusNodeKind = 'umbrella' | 'subunit'
 
 export interface SubjectManifestEntry {
@@ -85,6 +86,7 @@ export interface WorkspaceState {
   onlyDifficult: boolean
   showBroken: boolean
   displayMode: DisplayMode
+  questionGroupingMode: QuestionGroupingMode
   orderMode: OrderMode
   scrambleNonce: number
   expandedQuestionId: string | null
@@ -99,6 +101,7 @@ export interface WorkspaceFilterState {
   onlyDifficult: boolean
   showBroken: boolean
   displayMode: DisplayMode
+  questionGroupingMode: QuestionGroupingMode
   orderMode: OrderMode
   scrambleNonce: number
   expandedQuestionId: string | null

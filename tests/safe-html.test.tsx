@@ -60,6 +60,14 @@ describe('SafeHtml', () => {
     expect(container.querySelector('p')?.getAttribute('onclick')).toBeNull()
   })
 
+  it('strips javascript URLs from links and images', () => {
+    const { container } = render(
+      <SafeHtml html='<a href="javascript:alert(1)">x</a><img src="javascript:alert(2)" alt="x">' />,
+    )
+    expect(container.querySelector('a')?.getAttribute('href')).toBeNull()
+    expect(container.querySelector('img')?.getAttribute('src')).toBeNull()
+  })
+
   it('forces rel=noopener on target=_blank links', () => {
     const { container } = render(
       <SafeHtml html='<a href="https://example.com" target="_blank">x</a>' />,

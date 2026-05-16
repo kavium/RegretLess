@@ -4,7 +4,14 @@ import type { SyllabusIndex } from './selection'
 const PAPER_ORDER: PaperCode[] = ['1A', '1B', '1', '2', '3', 'unknown']
 const LEVEL_ORDER = ['SL', 'HL'] as const
 const YEAR_PREFIX_PATTERN = /^(\d{2})[MN]\b/i
-const QUESTION_PART_PATTERN = /^([a-z])(?:\.(i|ii|iii|iv|v|vi|vii|viii|ix|x))?$/
+const ROMAN_PATTERN = 'viii|vii|vi|iv|iii|ii|ix|x|v|i'
+const QUESTION_PART_PATTERN = new RegExp(`^([a-z])(?:\\.?(${ROMAN_PATTERN}|\\d+)|\\((${ROMAN_PATTERN}|\\d+)\\))?$`, 'i')
+const REFERENCE_PAREN_PART_PATTERN = new RegExp(`^(.+?)([a-z])\\((${ROMAN_PATTERN}|\\d+)\\)$`)
+const REFERENCE_DOT_PART_PATTERN = new RegExp(`^(.+?)([a-z])\\.(${ROMAN_PATTERN}|\\d+)$`)
+const REFERENCE_COMPACT_PART_PATTERN = new RegExp(`^(.+?)([a-z])(${ROMAN_PATTERN}|\\d+)$`)
+const REFERENCE_LETTER_PART_PATTERN = /^(.+?)\.?([a-z])$/
+const MARK_VALUE_PATTERN = /\[\s*(?:maximum\s+mark:\s*)?(\d+)(?:\s*marks?)?\s*\]/gi
+const QUESTION_REFERENCE_DISPLAY_PATTERN = /^(\d{2})([MN])$/i
 const ROMAN_ORDER = new Map([
   ['i', 1],
   ['ii', 2],
@@ -17,7 +24,21 @@ const ROMAN_ORDER = new Map([
   ['ix', 9],
   ['x', 10],
 ])
-const brokenQuestionCache = new Map<string, Set<string>>()
+const brokenQuestionCache = new WeakMap<SubjectBundle, Set<string>>()
+
+export interface QuestionRowModel {
+  rowId: string
+  representativeId: string
+  questionIds: string[]
+  isFullQuestion: boolean
+}
+
+interface ParsedQuestionPart {
+  familyStem: string
+  letter: string
+  letterOrder: number
+  subOrder: number | null
+}
 
 function createSeed(seedInput: string) {
   let hash = 2166136261
@@ -55,7 +76,16 @@ export function createQuestionMap(bundle: SubjectBundle) {
   return new Map(bundle.questions.map((question) => [question.questionId, question]))
 }
 
-function getQuestionFamilyStem(question: QuestionRecord) {
+function normalizeFamilyStem(stem: string) {
+  return stem.endsWith('.') ? stem.slice(0, -1) : stem
+}
+
+export function getQuestionFamilyStem(question: QuestionRecord) {
+  const parsed = parseQuestionPartInfo(question)
+  if (parsed) {
+    return parsed.familyStem
+  }
+
   const questionNumber = question.questionNumber
   const referenceCode = question.referenceCode
   if (!questionNumber || !referenceCode.endsWith(questionNumber)) {
@@ -63,11 +93,93 @@ function getQuestionFamilyStem(question: QuestionRecord) {
   }
 
   const stem = referenceCode.slice(0, -questionNumber.length)
-  return stem.endsWith('.') ? stem.slice(0, -1) : stem
+  return normalizeFamilyStem(stem)
+}
+
+function subpartOrder(rawSubpart: string | null) {
+  if (!rawSubpart) return null
+
+  const normalized = rawSubpart.toLowerCase()
+  if (/^\d+$/.test(normalized)) {
+    const parsed = Number.parseInt(normalized, 10)
+    return Number.isSafeInteger(parsed) ? parsed : null
+  }
+
+  return ROMAN_ORDER.get(normalized) ?? null
+}
+
+function createParsedPart(familyStem: string, letter: string, rawSubpart: string | null): ParsedQuestionPart {
+  const normalizedLetter = letter.toLowerCase()
+  return {
+    familyStem: normalizeFamilyStem(familyStem),
+    letter: normalizedLetter,
+    letterOrder: normalizedLetter.charCodeAt(0) - 'a'.charCodeAt(0),
+    subOrder: subpartOrder(rawSubpart),
+  }
+}
+
+function parseQuestionPartInfo(question: Pick<QuestionRecord, 'questionNumber' | 'referenceCode'>): ParsedQuestionPart | null {
+  const referenceCode = question.referenceCode.trim()
+  const referenceMatch =
+    REFERENCE_PAREN_PART_PATTERN.exec(referenceCode)
+    ?? REFERENCE_DOT_PART_PATTERN.exec(referenceCode)
+    ?? REFERENCE_COMPACT_PART_PATTERN.exec(referenceCode)
+    ?? REFERENCE_LETTER_PART_PATTERN.exec(referenceCode)
+
+  if (referenceMatch) {
+    return createParsedPart(referenceMatch[1], referenceMatch[2], referenceMatch[3] ?? null)
+  }
+
+  const questionNumber = question.questionNumber.trim().toLowerCase()
+  const match = QUESTION_PART_PATTERN.exec(questionNumber)
+  if (!match) return null
+
+  const familyStem = question.questionNumber && referenceCode.endsWith(question.questionNumber)
+    ? referenceCode.slice(0, -question.questionNumber.length)
+    : referenceCode
+
+  return createParsedPart(familyStem, match[1], match[2] ?? match[3] ?? null)
+}
+
+function compareQuestionParts(left: QuestionRecord, right: QuestionRecord) {
+  const leftPart = parseQuestionPartInfo(left)
+  const rightPart = parseQuestionPartInfo(right)
+
+  if (leftPart && rightPart) {
+    if (leftPart.letterOrder !== rightPart.letterOrder) {
+      return leftPart.letterOrder - rightPart.letterOrder
+    }
+    return (leftPart.subOrder ?? 0) - (rightPart.subOrder ?? 0)
+  }
+
+  if (leftPart) return -1
+  if (rightPart) return 1
+  return left.referenceCode.localeCompare(right.referenceCode)
+}
+
+function createFamilyGroups(bundle: SubjectBundle) {
+  const families = new Map<string, QuestionRecord[]>()
+
+  for (const question of bundle.questions) {
+    if (!parseQuestionPartInfo(question)) {
+      continue
+    }
+
+    const familyStem = getQuestionFamilyStem(question)
+    const family = families.get(familyStem) ?? []
+    family.push(question)
+    families.set(familyStem, family)
+  }
+
+  for (const family of families.values()) {
+    family.sort(compareQuestionParts)
+  }
+
+  return families
 }
 
 export function computeBrokenQuestionIds(bundle: SubjectBundle): Set<string> {
-  const cached = brokenQuestionCache.get(bundle.subject.id)
+  const cached = brokenQuestionCache.get(bundle)
   if (cached) {
     return cached
   }
@@ -76,13 +188,13 @@ export function computeBrokenQuestionIds(bundle: SubjectBundle): Set<string> {
   const parsedQuestions: Array<{ questionId: string; familyStem: string; letter: string; subOrder: number | null }> = []
 
   for (const question of bundle.questions) {
-    const match = QUESTION_PART_PATTERN.exec(question.questionNumber)
-    if (!match) {
+    const part = parseQuestionPartInfo(question)
+    if (!part) {
       continue
     }
 
-    const letter = match[1]
-    const subOrder = match[2] ? ROMAN_ORDER.get(match[2]) ?? null : null
+    const letter = part.letter
+    const subOrder = part.subOrder
     const familyStem = getQuestionFamilyStem(question)
     let family = families.get(familyStem)
     if (!family) {
@@ -131,7 +243,7 @@ export function computeBrokenQuestionIds(bundle: SubjectBundle): Set<string> {
     }
   }
 
-  brokenQuestionCache.set(bundle.subject.id, brokenIds)
+  brokenQuestionCache.set(bundle, brokenIds)
   return brokenIds
 }
 
@@ -247,6 +359,63 @@ export function orderQuestionIds(
   return [...shuffledIncomplete, ...shuffledCompleted]
 }
 
+export function buildQuestionRows(
+  orderedQuestionIds: string[],
+  bundle: SubjectBundle,
+  filters: WorkspaceFilterState,
+  brokenIds: Set<string>,
+  questionMap?: Map<string, QuestionRecord>,
+): QuestionRowModel[] {
+  if (filters.questionGroupingMode !== 'full-question') {
+    return orderedQuestionIds.map((questionId) => ({
+      rowId: questionId,
+      representativeId: questionId,
+      questionIds: [questionId],
+      isFullQuestion: false,
+    }))
+  }
+
+  const map = questionMap ?? createQuestionMap(bundle)
+  const families = createFamilyGroups(bundle)
+  const emittedFamilies = new Set<string>()
+  const rows: QuestionRowModel[] = []
+
+  for (const questionId of orderedQuestionIds) {
+    const question = map.get(questionId)
+    if (!question) continue
+
+    const familyStem = getQuestionFamilyStem(question)
+    const family = families.get(familyStem)
+    if (!family || brokenIds.has(questionId)) {
+      rows.push({
+        rowId: questionId,
+        representativeId: questionId,
+        questionIds: [questionId],
+        isFullQuestion: false,
+      })
+      continue
+    }
+
+    if (emittedFamilies.has(familyStem)) {
+      continue
+    }
+
+    emittedFamilies.add(familyStem)
+    const questionIds = family
+      .filter((part) => !brokenIds.has(part.questionId))
+      .map((part) => part.questionId)
+
+    rows.push({
+      rowId: `family:${familyStem}`,
+      representativeId: questionId,
+      questionIds,
+      isFullQuestion: questionIds.length > 1,
+    })
+  }
+
+  return rows
+}
+
 export function getAvailablePapers(bundle: SubjectBundle) {
   const papers = new Set(bundle.questions.map((question) => question.paper))
   return PAPER_ORDER.filter((paper) => papers.has(paper))
@@ -278,7 +447,76 @@ export function describeQuestion(question: QuestionRecord) {
   return `${question.referenceCode} · ${question.breadcrumbLabels.join(' > ')}`
 }
 
+function formatQuestionPartDisplay(rawPart: string) {
+  const normalized = rawPart.trim()
+  if (!normalized) return ''
+
+  const compactMatch = /^([a-z])([ivx]+|\d+)$/i.exec(normalized)
+  if (compactMatch) {
+    return `${compactMatch[1].toLowerCase()}(${compactMatch[2].toLowerCase()})`
+  }
+
+  const dottedMatch = /^([a-z])\.?([ivx]+|\d+)$/i.exec(normalized)
+  if (dottedMatch) {
+    return `${dottedMatch[1].toLowerCase()}(${dottedMatch[2].toLowerCase()})`
+  }
+
+  return normalized.toLowerCase()
+}
+
+function formatQuestionNumberDisplay(rawQuestion: string) {
+  const normalized = rawQuestion.trim()
+  const match = /^(\d+)(.*)$/.exec(normalized)
+  if (!match) return normalized
+
+  const questionNumber = match[1]
+  const part = formatQuestionPartDisplay(match[2] ?? '')
+  return part ? `${questionNumber} ${part}` : questionNumber
+}
+
+export function formatQuestionReferenceTitle(referenceCode: string) {
+  const code = referenceCode.trim()
+  const parts = code.split('.').filter(Boolean)
+  if (parts.length < 5) return code
+
+  const sessionMatch = QUESTION_REFERENCE_DISPLAY_PATTERN.exec(parts[0])
+  const paper = parts[1]
+  const timeZoneIndex = parts.findIndex((part) => /^TZ/i.test(part))
+  const timeZone = timeZoneIndex >= 0 ? parts[timeZoneIndex] : ''
+  const questionPart = timeZoneIndex >= 0 ? parts.slice(timeZoneIndex + 1).join('.') : ''
+
+  if (!sessionMatch || !paper || !timeZone || !questionPart) return code
+
+  const month = sessionMatch[2].toUpperCase() === 'M' ? 'May' : 'November'
+  const year = `20${sessionMatch[1]}`
+  const timeZoneNumber = timeZone.replace(/^TZ/i, '')
+  const questionNumber = formatQuestionNumberDisplay(questionPart)
+  const labels = [`${month} ${year}`, `Paper ${paper}`]
+
+  if (timeZoneNumber) {
+    labels.push(`Time Zone ${timeZoneNumber}`)
+  } else {
+    labels.push(timeZone)
+  }
+  labels.push(`Question ${questionNumber}`)
+
+  return labels.join(' | ')
+}
+
 export function extractMarksLabel(markschemeHtml: string): string | null {
   const matches = [...(markschemeHtml ?? '').matchAll(/\[\s*\d+\s*marks?\s*\]/gi)]
   return matches.length ? matches[matches.length - 1][0] : null
+}
+
+export function extractMarkValue(value: string): number | null {
+  const matches = [...(value ?? '').matchAll(MARK_VALUE_PATTERN)]
+  if (!matches.length) return null
+  const finalMatch = matches[matches.length - 1]
+  const parsed = Number.parseInt(finalMatch[1], 10)
+  return Number.isSafeInteger(parsed) ? parsed : null
+}
+
+export function formatTotalMarksLabel(total: number | null): string | null {
+  if (total === null) return null
+  return `Total ${total} ${total === 1 ? 'mark' : 'marks'}`
 }

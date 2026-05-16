@@ -114,6 +114,7 @@ export function StudySetupPage() {
     onlyDifficult: false,
     showBroken: false,
     displayMode: 'tags',
+    questionGroupingMode: 'per-part',
     orderMode: 'source',
     scrambleNonce: 0,
     expandedQuestionId: null,
