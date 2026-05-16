@@ -1,18 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Caveat:wght@500;700&family=Karla:wght@300;400;500&display=swap');
-
 .setup {
-  --paper: #f6efde;
-  --paper-deep: #ede4cd;
-  --paper-card: #fcf6e4;
-  --ink: #2c2418;
-  --ink-soft: #6f614b;
-  --gold: #b48a3e;
-  --gold-soft: #d4ad6e;
-  --rose: #f0c8c0;
-  --butter: #f4dba0;
-  --sage: #c9d8b6;
-  --sky: #c8d8e3;
-  --line: rgba(44, 36, 24, 0.18);
   font-family: 'Karla', sans-serif;
   font-weight: 300;
   background:
@@ -170,7 +156,7 @@
   padding: 26px 24px 22px;
   background: var(--paper-card);
   border: 1px solid var(--ink);
-  border-radius: 18px 18px 6px 6px;
+  border-radius: var(--card-radius) var(--card-radius) 6px 6px;
   position: sticky;
   overflow: hidden;
   box-shadow: 0 14px 24px -20px rgba(80, 50, 20, 0.4);
@@ -299,7 +285,7 @@
 
 .setup__vol {
   border: 1px solid var(--ink);
-  border-radius: 18px 18px 6px 6px;
+  border-radius: var(--card-radius) var(--card-radius) 6px 6px;
   background: var(--paper-card);
   overflow: hidden;
   box-shadow: 0 14px 24px -20px rgba(80, 50, 20, 0.4);

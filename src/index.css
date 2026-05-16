@@ -1,18 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Caveat:wght@500;700&family=Karla:wght@300;400;500&display=swap');
+@import './theme/tokens.css';
 
 :root {
-  --paper: #f6efde;
-  --paper-deep: #ede4cd;
-  --paper-card: #fcf6e4;
-  --ink: #2c2418;
-  --ink-soft: #6f614b;
-  --gold: #b48a3e;
-  --gold-soft: #d4ad6e;
-  --rose: #f0c8c0;
-  --butter: #f4dba0;
-  --sage: #c9d8b6;
-  --sky: #c8d8e3;
-  --line: rgba(44, 36, 24, 0.18);
   font-family: 'Karla', sans-serif;
   font-weight: 300;
   line-height: 1.5;
@@ -26,7 +15,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
 html, body, #root { min-height: 100vh; }
-body { background: var(--paper); color: var(--ink); }
+body { background: var(--paper); color: var(--ink); font-size: var(--body-font-size); }
 button, input { font: inherit; }
 a { color: inherit; text-decoration: none; }
 
@@ -51,7 +40,7 @@ a { color: inherit; text-decoration: none; }
   max-width: 36rem; width: min(100%, 36rem);
   background: var(--paper-card);
   border: 1px solid var(--ink);
-  border-radius: 18px 18px 6px 6px;
+  border-radius: var(--card-radius) var(--card-radius) 6px 6px;
   padding: 28px 28px 22px;
   box-shadow: 0 30px 60px -20px rgba(40, 24, 8, 0.55);
   overflow: hidden;

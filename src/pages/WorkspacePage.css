@@ -1,18 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Caveat:wght@500;700&family=Karla:wght@300;400;500&display=swap');
-
 .ws {
-  --paper: #f6efde;
-  --paper-deep: #ede4cd;
-  --paper-card: #fcf6e4;
-  --ink: #2c2418;
-  --ink-soft: #6f614b;
-  --gold: #b48a3e;
-  --gold-soft: #d4ad6e;
-  --rose: #f0c8c0;
-  --butter: #f4dba0;
-  --sage: #c9d8b6;
-  --sky: #c8d8e3;
-  --line: rgba(44,36,24,0.18);
   background:
     radial-gradient(800px 500px at 100% 0%, rgba(240,200,192,0.45), transparent 60%),
     radial-gradient(700px 500px at 0% 100%, rgba(201,216,182,0.4), transparent 60%),
@@ -55,7 +41,7 @@
 .ws__stat b { font-family: 'Cormorant Garamond', serif; font-style: italic; font-weight: 500; font-size: 22px; color: var(--ink); }
 .ws__stat span { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-soft); }
 
-.ws__toolbar { max-width: 1320px; margin: 0 auto 28px; padding: 22px 18px 16px; background: var(--paper-card); border: 1px solid var(--ink); border-radius: 14px 14px 4px 4px; display: flex; flex-wrap: wrap; gap: 18px; align-items: center; box-shadow: 0 14px 24px -20px rgba(80,50,20,.4); position: sticky; top: 12px; z-index: 5; }
+.ws__toolbar { max-width: 1320px; margin: 0 auto 28px; padding: 22px 18px 16px; background: var(--paper-card); border: 1px solid var(--ink); border-radius: var(--card-radius) var(--card-radius) 4px 4px; display: flex; flex-wrap: wrap; gap: 18px; align-items: center; box-shadow: 0 14px 24px -20px rgba(80,50,20,.4); position: sticky; top: 12px; z-index: 5; }
 .ws__toolbar::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 6px; background: linear-gradient(90deg, var(--rose), var(--butter), var(--sage), var(--sky)); border-radius: 14px 14px 0 0; }
 .ws__tool-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .ws__tool-label { font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; color: var(--ink-soft); letter-spacing: 0.04em; display: inline-flex; align-items: center; gap: 6px; min-width: 60px; }
@@ -114,13 +100,13 @@
   gap: 8px;
   background: var(--paper-card);
   border: 1px solid var(--ink);
-  border-radius: 14px 14px 4px 4px;
+  border-radius: var(--card-radius) var(--card-radius) 4px 4px;
   box-shadow: 0 14px 24px -20px rgba(80,50,20,.4);
 }
 .ws__tool-end { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 
 .ws__list { max-width: 1320px; margin: 0 auto; }
-.ws__q { border: 1px solid var(--ink); border-radius: 14px 14px 4px 4px; background: var(--paper-card); box-shadow: 0 14px 24px -20px rgba(80,50,20,.4); transition: transform .2s, box-shadow .2s; position: relative; }
+.ws__q { border: 1px solid var(--ink); border-radius: var(--card-radius) var(--card-radius) 4px 4px; background: var(--paper-card); box-shadow: 0 14px 24px -20px rgba(80,50,20,.4); transition: transform .2s, box-shadow .2s; position: relative; }
 .ws__q:hover { transform: translateY(-1px); box-shadow: 0 22px 30px -20px rgba(80,50,20,.5); }
 .ws__q.is-difficult { background: linear-gradient(180deg, rgba(240,200,192,0.4) 0%, var(--paper-card) 30%); }
 .ws__q.is-completed { opacity: 0.78; }
@@ -137,6 +123,7 @@
 .ws__q-tag--hard { background: #c64f3a; color: var(--paper); border-color: #8a3324; }
 .ws__q-tag--broken { background: #4a4a4a; color: #fafafa; border-color: #2a2a2a; }
 .ws__q-tag--full { background: var(--gold-soft); color: var(--ink); border-color: var(--ink); }
+.ws__q-tag--marks { background: var(--paper); color: var(--ink); border-color: var(--gold); }
 .ws__q-actions { display: flex; gap: 8px; align-items: center; }
 .ws__icon-btn { width: 38px; height: 38px; display: grid; place-items: center; background: var(--paper); border: 1px solid var(--ink); color: var(--ink); border-radius: 999px; cursor: pointer; transition: background .15s, color .15s, transform .15s; }
 .ws__icon-btn:hover { background: var(--gold-soft); transform: scale(1.05); }
@@ -154,10 +141,17 @@
   padding-top: 18px;
   border-top: 1px dashed var(--line);
 }
+.ws__part-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 10px;
+}
 .ws__part-label {
   width: max-content;
   max-width: 100%;
-  margin: 0 0 10px;
+  margin: 0;
   padding: 4px 10px;
   border: 1px solid var(--ink);
   border-radius: 999px;
@@ -166,6 +160,19 @@
   font-family: 'Karla', sans-serif;
   font-size: 10px;
   letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.ws__part-marks {
+  width: max-content;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-soft);
+  font-family: 'Karla', sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 .ws__reveal-row { display: inline-flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 16px; }

@@ -172,6 +172,14 @@ function marksTotalForParts(parts: QuestionRecord[], details: Record<string, Que
   return total > 0 ? total : null
 }
 
+function marksLabelForPart(part: QuestionRecord | undefined, detail: QuestionDetail) {
+  const markschemeLabel = extractMarksLabel(detail.markschemeHtml)
+  if (markschemeLabel) return markschemeLabel
+
+  const metaValue = part ? extractMarkValue(part.marksAvailable) : null
+  return metaValue === null ? null : `${metaValue} ${metaValue === 1 ? 'mark' : 'marks'}`
+}
+
 function hasSessionFlag(key: string) {
   try {
     return sessionStorage.getItem(key) === '1'
@@ -690,6 +698,7 @@ export function WorkspacePage() {
                     <span className={`ws__q-tag ws__q-tag--${paperTint}`}>{formatPaperLabel(question.paper, bundle.subject, availablePapers)}</span>
                     <span className="ws__q-tag ws__q-tag--sage">{question.level}</span>
                     {row.isFullQuestion ? <span className="ws__q-tag ws__q-tag--full">{row.questionIds.length} parts</span> : null}
+                    {row.isFullQuestion && totalMarks !== null ? <span className="ws__q-tag ws__q-tag--marks">{formatTotalMarksLabel(totalMarks)}</span> : null}
                     {brokenIds.has(questionId) ? <span className="ws__q-tag ws__q-tag--broken">Broken</span> : null}
                     {rowState.completed ? <span className="ws__q-tag ws__q-tag--done"><CheckCircle2 size={10} />completed</span> : null}
                     {rowState.difficult ? <span className="ws__q-tag ws__q-tag--hard"><Flag size={10} />difficult</span> : null}
@@ -790,9 +799,15 @@ export function WorkspacePage() {
                         <div className={row.isFullQuestion ? 'ws__q-question ws__q-question--combined' : 'ws__q-question'}>
                           {loadedDetails.map((detail, index) => {
                             const part = rowQuestions[index]
+                            const partMarksLabel = row.isFullQuestion ? marksLabelForPart(part, detail) : null
                             return (
                               <section key={detail.questionId} className="ws__part">
-                                {row.isFullQuestion && part ? <p className="ws__part-label">{questionPartLabel(part)}</p> : null}
+                                {row.isFullQuestion && part ? (
+                                  <div className="ws__part-head">
+                                    <p className="ws__part-label">{questionPartLabel(part)}</p>
+                                    {partMarksLabel ? <span className="ws__part-marks">{partMarksLabel}</span> : null}
+                                  </div>
+                                ) : null}
                                 <SafeHtml html={row.isFullQuestion ? stripRepeatedParentStem(detail.questionHtml, seenStemKeys) : detail.questionHtml} />
                               </section>
                             )

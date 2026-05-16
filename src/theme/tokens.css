@@ -1,0 +1,27 @@
+:root {
+  /* Surfaces */
+  --paper: #f6efde;
+  --paper-deep: #ede4cd;
+  --paper-card: #fcf6e4;
+
+  /* Ink */
+  --ink: #2c2418;
+  --ink-soft: #6f614b;
+
+  /* Accents */
+  --accent: #b48a3e;
+  --gold: var(--accent);
+  --gold-soft: #d4ad6e;
+  --rose: #f0c8c0;
+  --butter: #f4dba0;
+  --sage: #c9d8b6;
+  --sky: #c8d8e3;
+
+  /* Lines */
+  --line: rgba(44, 36, 24, 0.18);
+
+  /* Phase 2 hooks — not yet consumed widely */
+  --body-font-size: 16px;
+  --card-radius: 18px;
+  --surface-mode: light;
+}
