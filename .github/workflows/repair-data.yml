@@ -2,6 +2,11 @@ name: repair data
 
 on:
   workflow_dispatch:
+    inputs:
+      source_refs:
+        description: 'Comma-separated subject:reference-prefix pairs to re-fetch from source before generic repairs'
+        required: false
+        default: '50-dp-mathematics-analysis-and-approaches:23M.3.AHL.TZ1.1'
 
 concurrency:
   group: repair-data
@@ -37,6 +42,9 @@ jobs:
       - name: Repair question context
         run: |
           set -euo pipefail
+          if [ -n "${{ inputs.source_refs }}" ]; then
+            node scripts/repair-source-question-context.mjs --refs="${{ inputs.source_refs }}"
+          fi
           node scripts/repair-question-context.mjs
           node scripts/repair-shared-question-context.mjs
 
