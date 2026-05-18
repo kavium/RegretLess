@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       source_refs:
-        description: 'Comma-separated subject:reference-prefix pairs to re-fetch from source before generic repairs'
+        description: 'Optional comma-separated subject:reference-prefix pairs to re-fetch in addition to the automatic site-wide scan'
         required: false
-        default: '50-dp-mathematics-analysis-and-approaches:23M.3.AHL.TZ1.1'
+        default: ''
 
 concurrency:
   group: repair-data
@@ -42,6 +42,7 @@ jobs:
       - name: Repair question context
         run: |
           set -euo pipefail
+          node scripts/repair-source-question-context.mjs --auto
           if [ -n "${{ inputs.source_refs }}" ]; then
             node scripts/repair-source-question-context.mjs --refs="${{ inputs.source_refs }}"
           fi

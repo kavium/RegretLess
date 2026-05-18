@@ -11,6 +11,19 @@ const DEFAULT_SEED_URL =
 const FETCH_TIMEOUT_MS = 120000
 const QUESTION_SCHEMA_VERSION = 3
 const SAFE_ID_PATTERN = /^(?!__proto__$)(?!constructor$)(?!prototype$)[A-Za-z0-9_-]+$/
+const ORPHAN_CONTEXT_PATTERNS = [
+  /\b(?:above|below|shown|following|given|provided)\b/i,
+  /\b(?:diagram|graph|table|figure|image|photograph|micrograph|source|extract|data)\b/i,
+  /\b(?:compound|molecule|substance|species|curve|function|sequence|series|investment|option)\s+[A-Z]\b/i,
+  /\b(?:this|these|the)\s+(?:compound|molecule|substance|species|diagram|graph|table|figure|data|information|experiment|reaction|source|extract)\b/i,
+  /\bin\s+(?:part\s+)?\(?[a-z]\)?(?:\(?[ivxlcdm0-9]+\)?)?\b/i,
+]
+const LEAF_ONLY_PATTERNS = [
+  /^Option\s+[A-D][.;]?$/i,
+  /^[A-D][.;]?$/i,
+  /^(?:hence|therefore),?\s/i,
+  /^(?:find|calculate|determine|state|write down|deduce|show that|explain|suggest|identify|outline|sketch)\b/i,
+]
 
 setGlobalDispatcher(
   new Agent({
@@ -28,12 +41,14 @@ function parseArgs(argv) {
     dataRoot: DEFAULT_DATA_ROOT,
     seedUrl: DEFAULT_SEED_URL,
     dryRun: false,
+    auto: false,
     questions: [],
     refs: [],
   }
 
   for (const arg of argv) {
     if (arg === '--dry-run') options.dryRun = true
+    else if (arg === '--auto') options.auto = true
     else if (arg.startsWith('--data-root=')) options.dataRoot = arg.split('=')[1]
     else if (arg.startsWith('--seed-url=')) options.seedUrl = arg.split('=').slice(1).join('=')
     else if (arg.startsWith('--questions=')) options.questions = parsePairs(arg.split('=')[1])
@@ -225,6 +240,32 @@ function imgRefs(html) {
   return [...new Set(refs)]
 }
 
+function rootReference(referenceCode) {
+  const raw = String(referenceCode || '')
+  const match = raw.match(/^(.*?\.TZ[^.]+\.\d+)/i)
+  return match ? match[1] : null
+}
+
+function hasContextPhrase(text) {
+  return ORPHAN_CONTEXT_PATTERNS.some((pattern) => pattern.test(text))
+}
+
+function isLeafLike(text) {
+  return LEAF_ONLY_PATTERNS.some((pattern) => pattern.test(text))
+}
+
+function sourceRefetchRisk(question, family) {
+  if (question.parentCount > 0) return false
+  if (question.mediaCount > 0) return false
+  if (!question.text || question.text.length > 360) return false
+
+  const contextual = hasContextPhrase(question.text) || isLeafLike(question.text)
+  if (!contextual) return false
+
+  return family.size > 1
+    && (family.maxParentCount > 0 || family.maxMediaCount > 0 || family.maxTextLength > question.text.length + 180)
+}
+
 function shouldReplace(existing, parsed) {
   const existingText = comparableText(textFromHtml(existing.questionHtml))
   const parsedText = comparableText(textFromHtml(parsed.questionHtml))
@@ -264,6 +305,60 @@ async function questionIdsForRef(dataRoot, subjectId, refPrefix) {
   return index.questions
     .filter((question) => String(question.referenceCode || '').startsWith(refPrefix))
     .map((question) => question.questionId)
+}
+
+async function autoQuestionIds(dataRoot) {
+  const manifest = await readJson(path.join(dataRoot, 'manifest.json'))
+  const requested = new Map()
+
+  for (const subject of manifest.subjects) {
+    assertSafeId(subject.id, 'subject id')
+    const subjectDir = path.join(dataRoot, 'subjects', subject.id)
+    const index = await readJson(path.join(subjectDir, 'index.json'))
+    const questions = []
+
+    for (const meta of index.questions) {
+      const detailPath = path.join(subjectDir, 'q', `${meta.questionId}.json`)
+      if (!(await fileExists(detailPath))) continue
+      const detail = await readJson(detailPath)
+      questions.push({
+        questionId: meta.questionId,
+        referenceCode: meta.referenceCode,
+        familyRef: rootReference(meta.referenceCode),
+        text: textFromHtml(detail.questionHtml),
+        parentCount: parentCount(detail.questionHtml),
+        mediaCount: mediaCount(detail.questionHtml),
+      })
+    }
+
+    const byFamily = new Map()
+    for (const question of questions) {
+      if (!question.familyRef) continue
+      const group = byFamily.get(question.familyRef) ?? []
+      group.push(question)
+      byFamily.set(question.familyRef, group)
+    }
+
+    const ids = new Set()
+    for (const familyQuestions of byFamily.values()) {
+      const family = {
+        size: familyQuestions.length,
+        maxParentCount: Math.max(...familyQuestions.map((question) => question.parentCount)),
+        maxMediaCount: Math.max(...familyQuestions.map((question) => question.mediaCount)),
+        maxTextLength: Math.max(...familyQuestions.map((question) => question.text.length)),
+      }
+
+      for (const question of familyQuestions) {
+        if (sourceRefetchRisk(question, family)) {
+          ids.add(question.questionId)
+        }
+      }
+    }
+
+    if (ids.size) requested.set(subject.id, ids)
+  }
+
+  return requested
 }
 
 async function repairQuestion(dataRoot, seedUrl, subjectId, questionId, dryRun) {
@@ -360,7 +455,7 @@ async function pruneOldHashedBundles(dataRoot, touchedSubjectIds, keep = 3) {
 async function main() {
   const options = parseArgs(process.argv.slice(2))
   allowedSourceOrigin = new URL(options.seedUrl).origin
-  const requested = new Map()
+  const requested = options.auto ? await autoQuestionIds(options.dataRoot) : new Map()
 
   for (const { subjectId, value } of options.questions) {
     assertSafeId(subjectId, 'subject id')
@@ -378,10 +473,13 @@ async function main() {
     requested.set(subjectId, ids)
   }
 
-  if (requested.size === 0) {
+  const totalRequested = [...requested.values()].reduce((sum, ids) => sum + ids.size, 0)
+  if (totalRequested === 0) {
     console.log('No source questions requested')
     return
   }
+
+  console.log(`Source refetch candidates: ${totalRequested}`)
 
   const touchedSubjectIds = new Set()
   for (const [subjectId, ids] of requested) {
