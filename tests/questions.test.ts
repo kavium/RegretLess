@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyQuestionFilters, buildCanonicalQuestionSequence, buildQuestionRows, computeBrokenQuestionIds, extractMarkValue, extractMarksLabel, formatQuestionReferenceTitle, formatTotalMarksLabel, getAvailableYears, getQuestionYearFilter, orderQuestionIds } from '../src/lib/questions'
+import { applyQuestionFilters, buildCanonicalQuestionSequence, buildQuestionRows, computeBrokenQuestionIds, extractMarkValue, extractMarksLabel, formatQuestionPartLabel, formatQuestionReferenceTitle, formatTotalMarksLabel, getAvailableYears, getQuestionYearFilter, orderQuestionIds } from '../src/lib/questions'
 import { buildSyllabusIndex } from '../src/lib/selection'
 import type { SubjectBundle } from '../src/types'
 
@@ -260,7 +260,18 @@ describe('question ordering', () => {
     expect(formatQuestionReferenceTitle('21M.3.AHL.TZ2.2')).toBe('May 2021 | Paper 3 | Time Zone 2 | Question 2')
     expect(formatQuestionReferenceTitle('24N.3.AHL.TZ0.1bii')).toBe('November 2024 | Paper 3 | Time Zone 0 | Question 1 b(ii)')
     expect(formatQuestionReferenceTitle('24N.3.AHL.TZ0.1b.ii')).toBe('November 2024 | Paper 3 | Time Zone 0 | Question 1 b(ii)')
+    expect(formatQuestionReferenceTitle('EXN.3.AHL.TZ0.2')).toBe('Specimen | Paper 3 | Time Zone 0 | Question 2')
+    expect(formatQuestionReferenceTitle('SPM.3.AHL.TZ0.1c.ii')).toBe('Specimen | Paper 3 | Time Zone 0 | Question 1 c(ii)')
     expect(formatQuestionReferenceTitle('not-a-standard-code')).toBe('not-a-standard-code')
+  })
+
+  it('uses reference codes to display nested part labels', () => {
+    expect(formatQuestionPartLabel({ referenceCode: '24N.3.AHL.TZ0.1a', questionNumber: 'a' })).toBe('Part a')
+    expect(formatQuestionPartLabel({ referenceCode: '24N.3.AHL.TZ0.1bi', questionNumber: 'i' })).toBe('Part b.i')
+    expect(formatQuestionPartLabel({ referenceCode: '24N.3.AHL.TZ0.1bii', questionNumber: 'ii' })).toBe('Part b.ii')
+    expect(formatQuestionPartLabel({ referenceCode: '24N.3.AHL.TZ0.1ciii', questionNumber: 'iii' })).toBe('Part c.iii')
+    expect(formatQuestionPartLabel({ referenceCode: '23M.3.AHL.TZ1.1ci', questionNumber: 'i' })).toBe('Part c.i')
+    expect(formatQuestionPartLabel({ referenceCode: '23M.2.HL.TZ1.i', questionNumber: 'i' })).toBe('Part i')
   })
 
   it('combines non-broken sibling parts into full-question rows', () => {

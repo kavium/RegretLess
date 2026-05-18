@@ -12,6 +12,7 @@ const REFERENCE_COMPACT_PART_PATTERN = new RegExp(`^(.+?)([a-z])(${ROMAN_PATTERN
 const REFERENCE_LETTER_PART_PATTERN = /^(.+?)\.?([a-z])$/
 const MARK_VALUE_PATTERN = /\[\s*(?:maximum\s+mark:\s*)?(\d+)(?:\s*marks?)?\s*\]/gi
 const QUESTION_REFERENCE_DISPLAY_PATTERN = /^(\d{2})([MN])$/i
+const SPECIMEN_REFERENCE_DISPLAY_PATTERN = /^(?:EX[MN]|SPM)$/i
 const ROMAN_ORDER = new Map([
   ['i', 1],
   ['ii', 2],
@@ -38,6 +39,7 @@ interface ParsedQuestionPart {
   letter: string
   letterOrder: number
   subOrder: number | null
+  subpartLabel: string | null
 }
 
 function createSeed(seedInput: string) {
@@ -110,11 +112,13 @@ function subpartOrder(rawSubpart: string | null) {
 
 function createParsedPart(familyStem: string, letter: string, rawSubpart: string | null): ParsedQuestionPart {
   const normalizedLetter = letter.toLowerCase()
+  const normalizedSubpart = rawSubpart?.toLowerCase() ?? null
   return {
     familyStem: normalizeFamilyStem(familyStem),
     letter: normalizedLetter,
     letterOrder: normalizedLetter.charCodeAt(0) - 'a'.charCodeAt(0),
     subOrder: subpartOrder(rawSubpart),
+    subpartLabel: normalizedSubpart,
   }
 }
 
@@ -447,6 +451,16 @@ export function describeQuestion(question: QuestionRecord) {
   return `${question.referenceCode} · ${question.breadcrumbLabels.join(' > ')}`
 }
 
+export function formatQuestionPartLabel(question: Pick<QuestionRecord, 'questionNumber' | 'referenceCode'>) {
+  const parsed = parseQuestionPartInfo(question)
+  if (parsed) {
+    const suffix = parsed.subpartLabel === null ? '' : `.${parsed.subpartLabel}`
+    return `Part ${parsed.letter}${suffix}`
+  }
+
+  return question.questionNumber ? `Part ${question.questionNumber}` : question.referenceCode
+}
+
 function formatQuestionPartDisplay(rawPart: string) {
   const normalized = rawPart.trim()
   if (!normalized) return ''
@@ -480,18 +494,20 @@ export function formatQuestionReferenceTitle(referenceCode: string) {
   if (parts.length < 5) return code
 
   const sessionMatch = QUESTION_REFERENCE_DISPLAY_PATTERN.exec(parts[0])
+  const isSpecimen = SPECIMEN_REFERENCE_DISPLAY_PATTERN.test(parts[0])
   const paper = parts[1]
   const timeZoneIndex = parts.findIndex((part) => /^TZ/i.test(part))
   const timeZone = timeZoneIndex >= 0 ? parts[timeZoneIndex] : ''
   const questionPart = timeZoneIndex >= 0 ? parts.slice(timeZoneIndex + 1).join('.') : ''
 
-  if (!sessionMatch || !paper || !timeZone || !questionPart) return code
+  if ((!sessionMatch && !isSpecimen) || !paper || !timeZone || !questionPart) return code
 
-  const month = sessionMatch[2].toUpperCase() === 'M' ? 'May' : 'November'
-  const year = `20${sessionMatch[1]}`
+  const sessionLabel = isSpecimen
+    ? 'Specimen'
+    : `${sessionMatch![2].toUpperCase() === 'M' ? 'May' : 'November'} 20${sessionMatch![1]}`
   const timeZoneNumber = timeZone.replace(/^TZ/i, '')
   const questionNumber = formatQuestionNumberDisplay(questionPart)
-  const labels = [`${month} ${year}`, `Paper ${paper}`]
+  const labels = [sessionLabel, `Paper ${paper}`]
 
   if (timeZoneNumber) {
     labels.push(`Time Zone ${timeZoneNumber}`)

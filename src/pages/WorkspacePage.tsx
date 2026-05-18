@@ -9,7 +9,7 @@ import { NavLinks } from '../components/NavLinks'
 import { loadQuestionDetail } from '../lib/data-client'
 import { useDataContext } from '../lib/data-context'
 import { formatPaperLabel } from '../lib/paper-display'
-import { applyQuestionFilters, buildCanonicalQuestionSequence, buildQuestionRows, computeBrokenQuestionIds, createQuestionMap, extractMarkValue, extractMarksLabel, formatQuestionReferenceTitle, formatTotalMarksLabel, formatYearFilterLabel, getAvailableLevels, getAvailablePapers, getAvailableYears, getQuestionFamilyStem, orderQuestionIds } from '../lib/questions'
+import { applyQuestionFilters, buildCanonicalQuestionSequence, buildQuestionRows, computeBrokenQuestionIds, createQuestionMap, extractMarkValue, extractMarksLabel, formatQuestionPartLabel, formatQuestionReferenceTitle, formatTotalMarksLabel, formatYearFilterLabel, getAvailableLevels, getAvailablePapers, getAvailableYears, getQuestionFamilyStem, orderQuestionIds } from '../lib/questions'
 import { buildSyllabusIndex, getSelectionLabels } from '../lib/selection'
 import { getResumeState, getUserQuestionState, setResumeState, setUserQuestionState } from '../lib/storage'
 import { useSubjectBundle } from '../lib/use-subject-bundle'
@@ -126,10 +126,6 @@ function yearDropdownLabel(filters: YearFilterCode[], availableYears: YearFilter
 
 function normalizeStemKey(value: string) {
   return value.replace(/\s+/g, ' ').trim()
-}
-
-function questionPartLabel(question: Pick<QuestionRecord, 'questionNumber' | 'referenceCode'>) {
-  return question.questionNumber ? `Part ${question.questionNumber}` : question.referenceCode
 }
 
 function stripRepeatedParentStem(html: string, seenStemKeys: Set<string>) {
@@ -804,7 +800,7 @@ export function WorkspacePage() {
                               <section key={detail.questionId} className="ws__part">
                                 {row.isFullQuestion && part ? (
                                   <div className="ws__part-head">
-                                    <p className="ws__part-label">{questionPartLabel(part)}</p>
+                                    <p className="ws__part-label">{formatQuestionPartLabel(part)}</p>
                                     {partMarksLabel ? <span className="ws__part-marks">{partMarksLabel}</span> : null}
                                   </div>
                                 ) : null}
@@ -847,7 +843,7 @@ export function WorkspacePage() {
                               const part = rowQuestions[index]
                               return (
                                 <section key={detail.questionId} className="ws__part">
-                                  {row.isFullQuestion && part ? <p className="ws__part-label">{questionPartLabel(part)}</p> : null}
+                                  {row.isFullQuestion && part ? <p className="ws__part-label">{formatQuestionPartLabel(part)}</p> : null}
                                   <SafeHtml html={detail.markschemeHtml} />
                                 </section>
                               )
