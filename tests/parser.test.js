@@ -124,6 +124,26 @@ describe('source parsers', () => {
     expect(html.indexOf('INNER')).toBeLessThan(html.indexOf('LEAF'))
   })
 
+  it('keeps parent stems that are outside the question container', () => {
+    const result = parseQuestionPage(
+      `
+      <div class="q_resource"><p>ROOT CONTEXT</p></div>
+      <div class="t_qnt_container_full">
+        <div class="q_resource"><p>PART CONTEXT</p></div>
+        <div class="t_qn_question_content">
+          <div class="qc_body"><p>LEAF</p></div>
+        </div>
+      </div>
+      `,
+      'https://example.com/question_node_trees/9004.html',
+      'math',
+    )
+
+    const html = result.detail.questionHtml
+    expect(html.indexOf('ROOT CONTEXT')).toBeLessThan(html.indexOf('PART CONTEXT'))
+    expect(html.indexOf('PART CONTEXT')).toBeLessThan(html.indexOf('LEAF'))
+  })
+
   it('extracts non-base64 <img src> URLs as remote refs', () => {
     const { html, images } = extractInlineImages(
       '<p>see <img src="../images/structure.png" alt="x"></p>',

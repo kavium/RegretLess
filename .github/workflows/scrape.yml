@@ -52,6 +52,13 @@ jobs:
         timeout-minutes: 330
         run: node --max-old-space-size=8192 scripts/ingest-questionbank.mjs
 
+      - name: Repair scraped question context
+        if: always() && steps.scrape.conclusion != 'cancelled'
+        run: |
+          set -euo pipefail
+          node scripts/repair-question-context.mjs
+          node scripts/repair-shared-question-context.mjs
+
       - name: Publish to data branch
         if: always() && steps.scrape.conclusion != 'cancelled'
         id: publish

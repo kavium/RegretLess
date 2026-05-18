@@ -359,7 +359,7 @@ export function parseQuestionPage(html, pageUrl, subjectId) {
   const questionId = pageUrl.split('/').pop().replace(/\.html$/, '')
 
   const parentStems = []
-  $('.t_qnt_container_full .q_resource').each((_, el) => {
+  $('.q_resource').each((_, el) => {
     const stemHtml = $(el).html()?.trim()
     if (stemHtml) {
       parentStems.push(`<div class="qb-parent-stem">${stemHtml}</div>`)

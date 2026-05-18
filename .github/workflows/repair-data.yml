@@ -1,0 +1,55 @@
+name: repair data
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: repair-data
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm install --no-audit --no-fund
+
+      - name: Clone data branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          rm -rf public/data
+          git clone --depth 50 --branch data \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" public/data
+
+      - name: Repair question context
+        run: |
+          set -euo pipefail
+          node scripts/repair-question-context.mjs
+          node scripts/repair-shared-question-context.mjs
+
+      - name: Publish data fixes
+        run: |
+          set -euo pipefail
+          cd public/data
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "no data repairs"
+            exit 0
+          fi
+          git commit -q -m "repair question context"
+          git push origin HEAD:data

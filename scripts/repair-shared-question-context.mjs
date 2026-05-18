@@ -4,7 +4,7 @@ import path from 'node:path'
 import * as cheerio from 'cheerio'
 
 const DEFAULT_DATA_ROOT = 'public/data'
-const MATH_SUBJECT_IDS = new Set([
+const STABLE_FAMILY_SUBJECT_IDS = new Set([
   '50-dp-mathematics-analysis-and-approaches',
   '51-dp-mathematics-applications-and-interpretation',
 ])
@@ -221,8 +221,8 @@ function chooseStableFamilyParent(items) {
   return enoughAgreement ? winner.parent : null
 }
 
-async function repairMathFamilyParents(subject, dryRun) {
-  if (!MATH_SUBJECT_IDS.has(subject.index.subject?.id)) return []
+async function repairStableFamilyParents(subject, dryRun) {
+  if (!STABLE_FAMILY_SUBJECT_IDS.has(subject.index.subject?.id)) return []
 
   const byFamily = new Map()
   const changes = []
@@ -245,12 +245,13 @@ async function repairMathFamilyParents(subject, dryRun) {
       const currentText = textFromHtml(target.detail.questionHtml)
       if (hasParentContext(target.detail.questionHtml)) continue
       if (currentText.length > 320) continue
+      if (mediaCount(target.detail.questionHtml) > 0) continue
       if (currentText.includes(parentText.slice(0, Math.min(80, parentText.length)))) continue
 
       changes.push({
         questionId: target.meta.questionId,
         referenceCode: target.meta.referenceCode,
-        kind: 'math-family',
+        kind: 'stable-family',
       })
 
       if (!dryRun) {
@@ -614,7 +615,7 @@ async function main() {
     const changes = [
       ...(await repairExactDuplicates(subject, options.dryRun)),
       ...(await repairOrphanFamilyParents(subject, options.dryRun)),
-      ...(await repairMathFamilyParents(subject, options.dryRun)),
+      ...(await repairStableFamilyParents(subject, options.dryRun)),
       ...(await repairKnownMathContext(subject, options.dryRun)),
     ]
 
