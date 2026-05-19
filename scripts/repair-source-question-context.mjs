@@ -25,6 +25,15 @@ const LEAF_ONLY_PATTERNS = [
   /^(?:find|calculate|determine|state|write down|deduce|show that|explain|suggest|identify|outline|sketch)\b/i,
 ]
 
+class SourceFetchError extends Error {
+  constructor(message, { url, status, cause } = {}) {
+    super(message, { cause })
+    this.name = 'SourceFetchError'
+    this.url = url
+    this.status = status
+  }
+}
+
 setGlobalDispatcher(
   new Agent({
     keepAliveTimeout: 30_000,
@@ -134,6 +143,10 @@ function questionSourceUrl(seedUrl, subjectId, questionId) {
   return assertAllowedSourceUrl(new URL(`${subjectId}/question_node_trees/${questionId}.html`, sourceRoot(seedUrl)).toString())
 }
 
+function isRetryableStatus(status) {
+  return status === 408 || status === 425 || status === 429 || status >= 500
+}
+
 async function fetchHtml(url, retries = 10) {
   const safeUrl = assertAllowedSourceUrl(url)
 
@@ -154,11 +167,20 @@ async function fetchHtml(url, retries = 10) {
         return response.text()
       }
 
-      if (attempt === retries) {
-        throw new Error(`Failed to fetch ${safeUrl}: ${response.status}`)
+      if (!isRetryableStatus(response.status) || attempt === retries) {
+        throw new SourceFetchError(`Failed to fetch ${safeUrl}: ${response.status}`, {
+          url: safeUrl,
+          status: response.status,
+        })
       }
     } catch (error) {
-      if (attempt === retries) throw error
+      if (error instanceof SourceFetchError) throw error
+      if (attempt === retries) {
+        throw new SourceFetchError(`Failed to fetch ${safeUrl}: ${error instanceof Error ? error.message : String(error)}`, {
+          url: safeUrl,
+          cause: error,
+        })
+      }
     } finally {
       clearTimeout(timeoutId)
     }
@@ -399,6 +421,29 @@ async function repairQuestion(dataRoot, seedUrl, subjectId, questionId, dryRun) 
   }
 }
 
+async function tryRepairQuestion(dataRoot, seedUrl, subjectId, questionId, dryRun) {
+  try {
+    return {
+      change: await repairQuestion(dataRoot, seedUrl, subjectId, questionId, dryRun),
+      skipped: null,
+    }
+  } catch (error) {
+    if (error instanceof SourceFetchError) {
+      return {
+        change: null,
+        skipped: {
+          subjectId,
+          questionId,
+          status: error.status,
+          url: error.url,
+          message: error.message,
+        },
+      }
+    }
+    throw error
+  }
+}
+
 async function rebuildManifest(dataRoot, touchedSubjectIds, dryRun) {
   if (dryRun || touchedSubjectIds.size === 0) return
   const manifestPath = path.join(dataRoot, 'manifest.json')
@@ -482,11 +527,13 @@ async function main() {
   console.log(`Source refetch candidates: ${totalRequested}`)
 
   const touchedSubjectIds = new Set()
+  const skippedFetches = []
   for (const [subjectId, ids] of requested) {
     const changes = []
     for (const questionId of [...ids].sort()) {
-      const change = await repairQuestion(options.dataRoot, options.seedUrl, subjectId, questionId, options.dryRun)
+      const { change, skipped } = await tryRepairQuestion(options.dataRoot, options.seedUrl, subjectId, questionId, options.dryRun)
       if (change) changes.push(change)
+      if (skipped) skippedFetches.push(skipped)
     }
 
     if (changes.length) touchedSubjectIds.add(subjectId)
@@ -495,6 +542,15 @@ async function main() {
       console.log(`  ${change.questionId} ${change.referenceCode} parents ${change.previousParents}->${change.nextParents} text ${change.previousLength}->${change.nextLength}`)
     }
     if (changes.length > 12) console.log(`  ... ${changes.length - 12} more`)
+  }
+
+  if (skippedFetches.length) {
+    console.warn(`Skipped ${skippedFetches.length} source questions because their source pages could not be fetched`)
+    for (const skipped of skippedFetches.slice(0, 12)) {
+      const status = skipped.status ? ` status ${skipped.status}` : ''
+      console.warn(`  ${skipped.subjectId}:${skipped.questionId}${status} ${skipped.url}`)
+    }
+    if (skippedFetches.length > 12) console.warn(`  ... ${skippedFetches.length - 12} more`)
   }
 
   await rebuildManifest(options.dataRoot, touchedSubjectIds, options.dryRun)
