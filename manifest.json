@@ -1,6 +1,6 @@
 {
-  "version": "2026-09-24T09:49:02.056Z",
-  "generatedAt": "2026-09-24T09:49:02.056Z",
+  "version": "2026-09-25T10:06:50.137Z",
+  "generatedAt": "2026-09-25T10:06:50.137Z",
   "subjects": [
     {
       "id": "46-dp-physics-last-assessment-2024",
@@ -111,8 +111,8 @@
     {
       "id": "58-dp-chemistry-first-assessment-2025",
       "name": "DP Chemistry First Assessment (2025)",
-      "bundleUrl": "/data/subjects/58-dp-chemistry-first-assessment-2025/index-1dc519f7e2240e9119e8a6d3454b8f83c09762a6.json",
-      "bundleHash": "1dc519f7e2240e9119e8a6d3454b8f83c09762a6",
+      "bundleUrl": "/data/subjects/58-dp-chemistry-first-assessment-2025/index-0206ec9b8ab637b22a3da7804eb6f2cd4d1ebdec.json",
+      "bundleHash": "0206ec9b8ab637b22a3da7804eb6f2cd4d1ebdec",
       "questionCount": 1171,
       "nodeCount": 202,
       "paperCoverage": [
