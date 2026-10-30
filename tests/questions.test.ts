@@ -113,6 +113,66 @@ describe('question ordering', () => {
     expect(canonical).toEqual(['q1', 'q2', 'q3', 'q4'])
   })
 
+  describe('unnumbered duplicate records', () => {
+    const base = bundle.questions[0]
+    const shadowBundle: SubjectBundle = {
+      ...bundle,
+      sectionQuestionOrder: { A: ['real-a', 'shadow-a', 'shadow-only', 'real-b', 'shadow-b'], A1: [], A2: [], B: [] },
+      questions: [
+        { ...base, questionId: 'real-a', referenceCode: '17N.2.HL.TZ0.2a', questionNumber: 'a', title: 'Show that v is 8', marksAvailable: '[Maximum mark: 2]' },
+        { ...base, questionId: 'shadow-a', referenceCode: '17N.2.HL.TZ0.a', questionNumber: 'a', title: 'Show  that v is 8', marksAvailable: '[Maximum mark: 2]' },
+        { ...base, questionId: 'shadow-only', referenceCode: '17N.2.HL.TZ0.c', questionNumber: 'c', title: 'Explain the charge', marksAvailable: '[Maximum mark: 3]' },
+        { ...base, questionId: 'real-b', referenceCode: '17N.2.HL.TZ0.5a', questionNumber: 'a', title: 'Calculate the mass', marksAvailable: '[Maximum mark: 2]' },
+        { ...base, questionId: 'shadow-b', referenceCode: '17N.2.SL.TZ0.a', questionNumber: 'a', title: 'Calculate the mass', marksAvailable: '[Maximum mark: 2]' },
+      ],
+    }
+    const index = buildSyllabusIndex(shadowBundle.syllabus)
+
+    it('drops the unnumbered copy when its numbered twin is listed', () => {
+      const canonical = buildCanonicalQuestionSequence(shadowBundle, { umbrellaIds: ['A'], subunitIds: [] }, index)
+      expect(canonical).not.toContain('shadow-a')
+      expect(canonical).toContain('real-a')
+    })
+
+    it('keeps an unnumbered record with no numbered twin, or from another level', () => {
+      const canonical = buildCanonicalQuestionSequence(shadowBundle, { umbrellaIds: ['A'], subunitIds: [] }, index)
+      expect(canonical).toContain('shadow-only')
+      expect(canonical).toContain('shadow-b')
+    })
+
+    it('keeps the unnumbered copy when the numbered twin is outside the selection', () => {
+      const canonical = buildCanonicalQuestionSequence(
+        { ...shadowBundle, sectionQuestionOrder: { A: ['shadow-a'], A1: [], A2: [], B: ['real-a'] } },
+        { umbrellaIds: ['A'], subunitIds: [] },
+        index,
+      )
+      expect(canonical).toEqual(['shadow-a'])
+    })
+
+    it('does not group unnumbered records into one full-question family', () => {
+      const rows = buildQuestionRows(
+        ['shadow-only'],
+        shadowBundle,
+        {
+          paperFilters: ['2'],
+          levelFilters: ['SL', 'HL'],
+          yearFilters: [],
+          onlyDifficult: false,
+          showBroken: false,
+          displayMode: 'tags',
+          questionGroupingMode: 'full-question',
+          orderMode: 'source',
+          scrambleNonce: 0,
+          expandedQuestionId: null,
+        },
+        new Set(),
+      )
+      expect(rows).toEqual([
+        { rowId: 'shadow-only', representativeId: 'shadow-only', questionIds: ['shadow-only'], isFullQuestion: false },
+      ])
+    })
+  })
+
   it('moves completed questions to the bottom', () => {
     const canonical = buildCanonicalQuestionSequence(bundle, selection, index)
     expect(

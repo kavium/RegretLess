@@ -161,11 +161,92 @@ function compareQuestionParts(left: QuestionRecord, right: QuestionRecord) {
   return left.referenceCode.localeCompare(right.referenceCode)
 }
 
+// The source site lists many questions twice: once as "17N.2.HL.TZ0.2a" and once
+// as "17N.2.HL.TZ0.a", with the question number missing. The second record has the
+// same text and mark scheme but a different id, so reference-code dedupe misses it.
+const SESSION_REFERENCE_PATTERN = /^(.+?\.TZ\d+)\.(.+)$/i
+const LEADING_QUESTION_NUMBER_PATTERN = /^(?:[A-Za-z]_)?\d+/
+
+interface DuplicateFingerprint {
+  key: string
+  // Some unnumbered copies keep only the roman numeral ("i" for "1bi"), so a
+  // numbered record is also reachable by its part without the leading letter.
+  aliasKey: string | null
+  hasQuestionNumber: boolean
+}
+
+function getDuplicateFingerprint(question: QuestionRecord): DuplicateFingerprint | null {
+  const match = SESSION_REFERENCE_PATTERN.exec(question.referenceCode.trim())
+  if (!match) return null
+
+  const rest = match[2]
+  const hasQuestionNumber = LEADING_QUESTION_NUMBER_PATTERN.test(rest)
+  if (!hasQuestionNumber && !/^[a-z]/i.test(rest)) return null
+
+  const part = rest.replace(LEADING_QUESTION_NUMBER_PATTERN, '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+  if (!part) return null
+
+  const title = question.title.replace(/\s+/g, ' ').trim()
+  const buildKey = (value: string) => [match[1].toLowerCase(), value, title, question.marksAvailable].join('\u0000')
+  const aliasPart = /^[a-z]([ivx]+|\d+)$/.exec(part)?.[1]
+
+  return {
+    key: buildKey(part),
+    aliasKey: hasQuestionNumber && aliasPart ? buildKey(aliasPart) : null,
+    hasQuestionNumber,
+  }
+}
+
+function isUnnumberedQuestion(question: QuestionRecord) {
+  const match = SESSION_REFERENCE_PATTERN.exec(question.referenceCode.trim())
+  return Boolean(match) && !LEADING_QUESTION_NUMBER_PATTERN.test(match![2]) && /^[a-z]/i.test(match![2])
+}
+
+// Drops an unnumbered copy only when a numbered record with the same session, part,
+// title and marks is also in the list. Each numbered record absorbs one copy. An
+// unnumbered record with no numbered twin stays, since it may be the only copy
+// filed under the selected unit.
+function dropUnnumberedCopies(questionIds: string[], questionMap: Map<string, QuestionRecord>) {
+  const numberedByKey = new Map<string, string[]>()
+  const fingerprints = new Map<string, DuplicateFingerprint | null>()
+
+  const register = (key: string, questionId: string) => {
+    const ids = numberedByKey.get(key)
+    if (ids) ids.push(questionId)
+    else numberedByKey.set(key, [questionId])
+  }
+
+  for (const questionId of questionIds) {
+    const question = questionMap.get(questionId)
+    const fingerprint = question ? getDuplicateFingerprint(question) : null
+    fingerprints.set(questionId, fingerprint)
+    if (fingerprint?.hasQuestionNumber) {
+      register(fingerprint.key, questionId)
+      if (fingerprint.aliasKey) register(fingerprint.aliasKey, questionId)
+    }
+  }
+
+  const absorbed = new Set<string>()
+
+  return questionIds.filter((questionId) => {
+    const fingerprint = fingerprints.get(questionId)
+    if (!fingerprint || fingerprint.hasQuestionNumber) return true
+
+    const twin = numberedByKey.get(fingerprint.key)?.find((id) => !absorbed.has(id))
+    if (!twin) return true
+
+    absorbed.add(twin)
+    return false
+  })
+}
+
 function createFamilyGroups(bundle: SubjectBundle) {
   const families = new Map<string, QuestionRecord[]>()
 
   for (const question of bundle.questions) {
-    if (!parseQuestionPartInfo(question)) {
+    // Unnumbered copies would all share one family per session, so a single copy
+    // would pull in every unnumbered part of that paper.
+    if (isUnnumberedQuestion(question) || !parseQuestionPartInfo(question)) {
       continue
     }
 
@@ -286,7 +367,7 @@ export function buildCanonicalQuestionSequence(
     }
   }
 
-  return questionIds
+  return dropUnnumberedCopies(questionIds, questionMap)
 }
 
 export function applyQuestionFilters(

@@ -76,12 +76,12 @@ describe('SafeHtml', () => {
     expect(link?.getAttribute('rel')).toContain('noopener')
   })
 
-  it('keeps safe images and adds lazy-loading attributes', () => {
+  it('keeps safe images and loads them eagerly', () => {
     const { container } = render(
       <SafeHtml html='<img src="https://example.com/x.png" alt="x">' />,
     )
     const image = container.querySelector('img')
-    expect(image?.getAttribute('loading')).toBe('lazy')
+    expect(image?.getAttribute('loading')).toBe('eager')
     expect(image?.getAttribute('decoding')).toBe('async')
   })
 })

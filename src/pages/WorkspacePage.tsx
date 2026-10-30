@@ -124,8 +124,14 @@ function yearDropdownLabel(filters: YearFilterCode[], availableYears: YearFilter
   return `${filters.length} years`
 }
 
-function normalizeStemKey(value: string) {
-  return value.replace(/\s+/g, ' ').trim()
+function normalizeStemKey(stem: Element) {
+  const text = (stem.textContent ?? '').replace(/\s+/g, ' ').trim()
+  const images = Array.from(stem.querySelectorAll('img'), (img) => img.getAttribute('src') ?? '').join('|')
+  const hasOtherMedia = stem.querySelector('svg, table') !== null
+  // Two stems with the same caption can show different diagrams, so the key
+  // covers the images too. Stems with no text but other media never match.
+  if (!text && !images && !hasOtherMedia) return ''
+  return hasOtherMedia ? `${text}\u0000${images}\u0000${stem.innerHTML}` : `${text}\u0000${images}`
 }
 
 function stripRepeatedParentStem(html: string, seenStemKeys: Set<string>) {
@@ -133,16 +139,19 @@ function stripRepeatedParentStem(html: string, seenStemKeys: Set<string>) {
 
   const parser = new DOMParser()
   const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html')
-  const parentStem = doc.body.querySelector('.qb-parent-stem')
-  if (!parentStem) return html
+  const parentStems = Array.from(doc.body.querySelectorAll('.qb-parent-stem'))
+  if (!parentStems.length) return html
 
-  const stemKey = normalizeStemKey(parentStem.textContent ?? parentStem.innerHTML)
-  if (!stemKey || !seenStemKeys.has(stemKey)) {
-    if (stemKey) seenStemKeys.add(stemKey)
-    return doc.body.firstElementChild?.innerHTML ?? html
+  for (const parentStem of parentStems) {
+    const stemKey = normalizeStemKey(parentStem)
+    if (!stemKey) continue
+    if (seenStemKeys.has(stemKey)) {
+      parentStem.remove()
+    } else {
+      seenStemKeys.add(stemKey)
+    }
   }
 
-  parentStem.remove()
   return doc.body.firstElementChild?.innerHTML ?? html
 }
 

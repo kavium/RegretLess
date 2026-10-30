@@ -4,7 +4,9 @@ import { typesetMath } from '../lib/mathjax'
 
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node instanceof HTMLImageElement) {
-    if (!node.getAttribute('loading')) node.setAttribute('loading', 'lazy')
+    // Questions only render once expanded, so lazy loading saves nothing and lets
+    // the card grow after the user has already started scrolling.
+    node.setAttribute('loading', 'eager')
     if (!node.getAttribute('decoding')) node.setAttribute('decoding', 'async')
   }
   if (node instanceof HTMLAnchorElement && node.getAttribute('target') === '_blank') {
